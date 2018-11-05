@@ -8,7 +8,7 @@ PRIVATE_TRACKER_LIST='shareisland,bigtower,girotorrent,alpharatio,torrentbytes'
 LIVE_TRACKERS_LIST_URL='https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt'
 ########## CONFIGURATIONS ##########
 
-TRACKERS_LIST_FILE=$(pwd)/trakerlist
+TRACKERS_LIST_FILE=~/TransmissionTrackersList
 TRANSMISSION_REMOTE=$(which transmission-remote)
 
 TORRENTS=$($TRANSMISSION_REMOTE -l 2>/dev/null)
@@ -86,16 +86,15 @@ fi
 }
 
 if [[ ! -z "$sonarr_release_title" ]] || [[ ! -z "$radarr_movie_title" ]]; then
-  echo "sonarr or radarr variable found, looking better"
+  echo "Sonarr or Radarr variable found, looking better"
   if [[ ! -z "$sonarr_release_title" ]]; then
-    echo "sonarr varialbe found:" $sonarr_release_title
+    echo "Sonarr varialbe found:" $sonarr_release_title
     tmp_var=$(echo "$sonarr_release_title" | sed -r 's/(\^|-|~|\[|]|\.)/ /g' | sed 's/  */ /g')
   else
-    echo "radarr varialbe found:" $radarr_movie_title
+    echo "Radarr varialbe found:" $radarr_movie_title
     tmp_var=$(echo "$radarr_movie_title" | sed -r 's/(\^|-|~|\[|]|\.)/ /g' | sed 's/  */ /g')
   fi
   set -- "$tmp_var"
-  echo "argument set to" $tmp_var
 fi
 
 if [ $# -eq 0 ]; then
@@ -148,6 +147,11 @@ while [ $# -ne 0 ]; do
     NUMBERCHECK=$(echo "$TORRENTS" | \
       sed -nr '1d;/^Sum:/d;s: :0:g;s:^(....).*:\1:p' | \
       grep $(echo 0000$PARAMETER | sed -nr 's:.*([0-9]{4}$):\1:p'))
+  fi
+
+  if [ ${NUMBERCHECK:-0} -eq 0 ] && ([ ! -z "$sonarr_release_title" ] || [ ! -z "$radarr_movie_title" ]); then
+    echo -e "\e[0m\e[33mI didn't find the torrent, but this request came from Sonarr/Radarr, so I'll analyze all\e[0m"
+    NUMBERCHECK=1
   fi
 
   if [ ${NUMBERCHECK:-0} -eq 0 ]; then
