@@ -1,13 +1,14 @@
 #!/bin/bash
 # Original script from -> https://github.com/oilervoss/transmission
 
+########## CONFIGURATIONS ##########
+# Configure here your private trackers
 PRIVATE_TRACKER_LIST='shareisland,bigtower,girotorrent,alpharatio,torrentbytes'
-
-# Below is a command that will get a list of trackers with one tracker per line
-# command can be 'cat /some/path/trackers.txt' for a static list
+# Configure here your trackers list
 LIVE_TRACKERS_LIST_URL='https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt'
-TRACKERS_LIST_FILE=$(pwd)/trakerlist
+########## CONFIGURATIONS ##########
 
+TRACKERS_LIST_FILE=$(pwd)/trakerlist
 TRANSMISSION_REMOTE=$(which transmission-remote)
 
 TORRENTS=$($TRANSMISSION_REMOTE -l 2>/dev/null)
@@ -15,6 +16,74 @@ if [ $? -ne 0 ]; then
   echo -e "\n\e[0;91;1mFail on transmission. Aborting.\n\e[0m"
   exit 1
 fi
+
+function upgrade() {
+  wget -O $TRACKERS_LIST_FILE $LIVE_TRACKERS_LIST_URL
+  if [[ $? -ne 0 ]]; then
+    echo "wget failed, writing a standard one"
+cat >$TRACKERS_LIST_FILE <<'EOL'
+udp://tracker.coppersurfer.tk:6969/announce
+http://tracker.internetwarriors.net:1337/announce
+udp://tracker.internetwarriors.net:1337/announce
+udp://tracker.opentrackr.org:1337/announce
+udp://9.rarbg.to:2710/announce
+udp://exodus.desync.com:6969/announce
+udp://explodie.org:6969/announce
+http://explodie.org:6969/announce
+udp://public.popcorn-tracker.org:6969/announce
+udp://tracker.vanitycore.co:6969/announce
+http://tracker.vanitycore.co:6969/announce
+udp://tracker1.itzmx.com:8080/announce
+http://tracker1.itzmx.com:8080/announce
+udp://ipv4.tracker.harry.lu:80/announce
+udp://tracker.torrent.eu.org:451/announce
+udp://tracker.tiny-vps.com:6969/announce
+udp://tracker.port443.xyz:6969/announce
+udp://open.stealth.si:80/announce
+udp://open.demonii.si:1337/announce
+udp://denis.stalker.upeer.me:6969/announce
+udp://bt.xxx-tracker.com:2710/announce
+http://tracker.port443.xyz:6969/announce
+udp://tracker2.itzmx.com:6961/announce
+udp://retracker.lanta-net.ru:2710/announce
+http://tracker2.itzmx.com:6961/announce
+http://tracker4.itzmx.com:2710/announce
+http://tracker3.itzmx.com:6961/announce
+http://tracker.city9x.com:2710/announce
+http://torrent.nwps.ws:80/announce
+http://retracker.telecom.by:80/announce
+http://open.acgnxtracker.com:80/announce
+wss://ltrackr.iamhansen.xyz:443/announce
+udp://zephir.monocul.us:6969/announce
+udp://tracker.toss.li:6969/announce
+http://opentracker.xyz:80/announce
+http://open.trackerlist.xyz:80/announce
+udp://tracker.swateam.org.uk:2710/announce
+udp://tracker.kamigami.org:2710/announce
+udp://tracker.iamhansen.xyz:2000/announce
+udp://tracker.ds.is:6969/announce
+udp://pubt.in:2710/announce
+https://tracker.fastdownload.xyz:443/announce
+https://opentracker.xyz:443/announce
+http://tracker.torrentyorg.pl:80/announce
+http://t.nyaatracker.com:80/announce
+http://open.acgtracker.com:1096/announce
+wss://tracker.openwebtorrent.com:443/announce
+wss://tracker.fastcast.nz:443/announce
+wss://tracker.btorrent.xyz:443/announce
+udp://tracker.justseed.it:1337/announce
+udp://thetracker.org:80/announce
+udp://packages.crunchbangplusplus.org:6969/announce
+https://1337.abcvg.info:443/announce
+http://tracker.tfile.me:80/announce.php
+http://tracker.tfile.me:80/announce
+http://tracker.tfile.co:80/announce
+http://retracker.mgts.by:80/announce
+http://peersteers.org:80/announce
+http://fxtt.ru:80/announce
+EOL
+fi
+}
 
 if [[ ! -z "$sonarr_release_title" ]] || [[ ! -z "$radarr_movie_title" ]]; then
   echo "sonarr or radarr variable found, looking better"
@@ -137,71 +206,3 @@ while [ $# -ne 0 ]; do
 done
 
 echo -e "\e[0m"
-
-function upgrade() {
-  wget -O $TRACKERS_LIST_FILE $LIVE_TRACKERS_LIST_URL
-  if [[ $? -ne 0 ]]; then
-    echo "wget failed, writing a standard one"
-cat >$TRACKERS_LIST_FILE <<'EOL'
-udp://tracker.coppersurfer.tk:6969/announce
-http://tracker.internetwarriors.net:1337/announce
-udp://tracker.internetwarriors.net:1337/announce
-udp://tracker.opentrackr.org:1337/announce
-udp://9.rarbg.to:2710/announce
-udp://exodus.desync.com:6969/announce
-udp://explodie.org:6969/announce
-http://explodie.org:6969/announce
-udp://public.popcorn-tracker.org:6969/announce
-udp://tracker.vanitycore.co:6969/announce
-http://tracker.vanitycore.co:6969/announce
-udp://tracker1.itzmx.com:8080/announce
-http://tracker1.itzmx.com:8080/announce
-udp://ipv4.tracker.harry.lu:80/announce
-udp://tracker.torrent.eu.org:451/announce
-udp://tracker.tiny-vps.com:6969/announce
-udp://tracker.port443.xyz:6969/announce
-udp://open.stealth.si:80/announce
-udp://open.demonii.si:1337/announce
-udp://denis.stalker.upeer.me:6969/announce
-udp://bt.xxx-tracker.com:2710/announce
-http://tracker.port443.xyz:6969/announce
-udp://tracker2.itzmx.com:6961/announce
-udp://retracker.lanta-net.ru:2710/announce
-http://tracker2.itzmx.com:6961/announce
-http://tracker4.itzmx.com:2710/announce
-http://tracker3.itzmx.com:6961/announce
-http://tracker.city9x.com:2710/announce
-http://torrent.nwps.ws:80/announce
-http://retracker.telecom.by:80/announce
-http://open.acgnxtracker.com:80/announce
-wss://ltrackr.iamhansen.xyz:443/announce
-udp://zephir.monocul.us:6969/announce
-udp://tracker.toss.li:6969/announce
-http://opentracker.xyz:80/announce
-http://open.trackerlist.xyz:80/announce
-udp://tracker.swateam.org.uk:2710/announce
-udp://tracker.kamigami.org:2710/announce
-udp://tracker.iamhansen.xyz:2000/announce
-udp://tracker.ds.is:6969/announce
-udp://pubt.in:2710/announce
-https://tracker.fastdownload.xyz:443/announce
-https://opentracker.xyz:443/announce
-http://tracker.torrentyorg.pl:80/announce
-http://t.nyaatracker.com:80/announce
-http://open.acgtracker.com:1096/announce
-wss://tracker.openwebtorrent.com:443/announce
-wss://tracker.fastcast.nz:443/announce
-wss://tracker.btorrent.xyz:443/announce
-udp://tracker.justseed.it:1337/announce
-udp://thetracker.org:80/announce
-udp://packages.crunchbangplusplus.org:6969/announce
-https://1337.abcvg.info:443/announce
-http://tracker.tfile.me:80/announce.php
-http://tracker.tfile.me:80/announce
-http://tracker.tfile.co:80/announce
-http://retracker.mgts.by:80/announce
-http://peersteers.org:80/announce
-http://fxtt.ru:80/announce
-EOL
-fi
-}
