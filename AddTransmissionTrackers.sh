@@ -18,9 +18,10 @@ if [ $? -ne 0 ]; then
 fi
 
 function upgrade() {
+  echo "Downloading/Upgrading traker list ..."
   wget -O $TRACKERS_LIST_FILE $LIVE_TRACKERS_LIST_URL
   if [[ $? -ne 0 ]]; then
-    echo "wget failed, writing a standard one"
+    echo "I can't download the list, I'll use a static one"
 cat >$TRACKERS_LIST_FILE <<'EOL'
 udp://tracker.coppersurfer.tk:6969/announce
 http://tracker.internetwarriors.net:1337/announce
@@ -83,6 +84,7 @@ http://peersteers.org:80/announce
 http://fxtt.ru:80/announce
 EOL
 fi
+  echo "Downloading/Upgrading done."
 }
 
 if [[ ! -z "$sonarr_release_title" ]] || [[ ! -z "$radarr_movie_title" ]]; then
@@ -112,12 +114,21 @@ fi
 
 if [[ -s $TRACKERS_LIST_FILE ]]; then # the file exist and is not empty?
   echo "Tracker file exist, I'll check if I need to upgrade it"
-  if [[ $(find "$TRACKERS_LIST_FILE" -mtime +1 -print) ]]; then
-    echo "File $TRACKERS_LIST_FILE exists and is older than 1 day, I'll upgrade it"
+
+  days="1"
+
+  # collect both times in seconds-since-the-epoch
+  days_ago=$(date -d "now -$days days" +%s)
+  file_time=$(date -r "$TRACKERS_LIST_FILE" +%s)
+
+  if (( $file_time <= $days_ago )); then
+    echo "File $TRACKERS_LIST_FILE exists and is older than $days day, I'll upgrade it"
     upgrade
   else
-    echo "File $TRACKERS_LIST_FILE exists and I don't need to upgrade it"
+    echo "$filename is not older than $days days"
+    echo "File $TRACKERS_LIST_FILE is not older than $days days and I don't need to upgrade it"
   fi
+
 else # file don't exist I've to download it
   echo "Tracker file don't exist I'll create a new one"
   upgrade
@@ -151,6 +162,10 @@ while [ $# -ne 0 ]; do
 
   if [ ${NUMBERCHECK:-0} -eq 0 ] && ([ ! -z "$sonarr_release_title" ] || [ ! -z "$radarr_movie_title" ]); then
     echo -e "\e[0m\e[33mI didn't find the torrent, but this request came from Sonarr/Radarr, so I'll analyze all\e[0m"
+    PARAMETER=$(echo "$TORRENTS" | \
+    awk '{print $1}' | \
+    head -n -1 | \
+    tail -n+2)
     NUMBERCHECK=1
   fi
 
