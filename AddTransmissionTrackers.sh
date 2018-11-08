@@ -9,7 +9,7 @@ LIVE_TRACKERS_LIST_URL='https://raw.githubusercontent.com/ngosang/trackerslist/m
 ########## CONFIGURATIONS ##########
 
 TRACKERS_LIST_FILE=~/TransmissionTrackersList
-TRANSMISSION_REMOTE=$(which transmission-remote)
+TRANSMISSION_REMOTE="$(which transmission-remote)"
 
 TORRENTS=$($TRANSMISSION_REMOTE -l 2>/dev/null)
 if [ $? -ne 0 ]; then
