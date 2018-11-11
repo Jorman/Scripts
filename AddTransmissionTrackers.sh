@@ -125,7 +125,6 @@ if [[ -s $TRACKERS_LIST_FILE ]]; then # the file exist and is not empty?
     echo "File $TRACKERS_LIST_FILE exists and is older than $days day, I'll upgrade it"
     upgrade
   else
-    echo "$filename is not older than $days days"
     echo "File $TRACKERS_LIST_FILE is not older than $days days and I don't need to upgrade it"
   fi
 
@@ -138,23 +137,23 @@ TRACKER_LIST=$(cat $TRACKERS_LIST_FILE)
 
 while [ $# -ne 0 ]; do
   PARAMETER="$1"
+  UNLUKYCHECK=0
   [ "$PARAMETER" = "." ] && PARAMETER=" "
 
-  if [ ! -z "${PARAMETER//[0-9]}" ] ; then
+  if [ ! -z "${PARAMETER//[0-9]}" ]; then # not a number given
     PARAMETER=$(echo "$TORRENTS" | \
       sed -nr '1d;/^Sum:/d;s:(^.{4}).{64}:\1:p' | \
       sed -r 's/(\^|-|~|\[|]|\.)/ /g' | \
-      #sed 's/  */ /g' | \
       grep -iF "$PARAMETER" | \
       sed -nr 's:(^.{4}).*:\1:;s: ::gp')
-    if [ ! -z "$PARAMETER" ] && [ -z ${PARAMETER//[0-9]} ] ; then
+    if [ ! -z "$PARAMETER" ] && [ -z ${PARAMETER//[0-9]} ]; then # not empty and not a number
       NUMBERCHECK=1
       echo -e "\n\e[0;32;1mI found the following torrent:\e[0;32m"
       echo "$TORRENTS" | sed -nr 's:(^.{4}).{64}:\1:p' | grep -i "$1"
     else
       NUMBERCHECK=0
     fi
-  else
+  else # a number is given
     NUMBERCHECK=$(echo "$TORRENTS" | \
       sed -nr '1d;/^Sum:/d;s: :0:g;s:^(....).*:\1:p' | \
       grep $(echo 0000$PARAMETER | sed -nr 's:.*([0-9]{4}$):\1:p'))
@@ -167,6 +166,7 @@ while [ $# -ne 0 ]; do
     head -n -1 | \
     tail -n+2)
     NUMBERCHECK=1
+    UNLUKYCHECK=1
   fi
 
   if [ ${NUMBERCHECK:-0} -eq 0 ]; then
@@ -184,26 +184,26 @@ while [ $# -ne 0 ]; do
     if [ ! -z "$PRIVATE_TRACKER_LIST" ]; then #private tracker list present, need some more check
       echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
 
-      if [[ ! -z "$sonarr_release_indexer" ]]; then
+      if [[ ! -z "$sonarr_release_indexer" ]] && [[ $UNLUKYCHECK -ne 1 ]]; then
         echo -e "\e[33mIndexer given by Sonarr\e[0m"
         INDEXER=$sonarr_release_indexer
-      elif [[ ! -z "$radarr_release_indexer" ]]; then
+      elif [[ ! -z "$radarr_release_indexer" ]] && [[ $UNLUKYCHECK -ne 1 ]]; then
         echo -e "\e[33mIndexer given by Radarr\e[0m"
         INDEXER=$radarr_release_indexer
       else
-        echo -e "\e[33mIndexer directly from Transmission\e[0m"
+        echo -e "\e[33mIndexer from Torrent\e[0m"
         INDEXER=$($TRANSMISSION_REMOTE -t $TORRENT -i | sed -nr 's/ *Magnet: ?(.*)/\1/p')
       fi
 
       for j in ${PRIVATE_TRACKER_LIST//,/ }; do
         if [[ "${INDEXER,,}" =~ "${j,,}" ]];then
-          echo -e "\e[31m< Private tracker found, I'll not add any extra tracker >\e[0m"
-          PRIVATECHECK=$(expr $PRIVATECHECK + 1)
+          echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
+          PRIVATECHECK=1
           break #if just one is found, stop the loop
         fi
       done
     else #private tracker list not present, no extra check needed
-      echo "private tracker list not present, proceding like default"
+      echo "Private tracker list not present, proceding like default"
     fi
 
     if [ $PRIVATECHECK -eq 0 ]; then
@@ -213,9 +213,9 @@ while [ $# -ne 0 ]; do
           echo -ne "\e[0;36;1mAdding $TRACKER\e[0;36m"
           $TRANSMISSION_REMOTE -t $TORRENT -td $TRACKER 1>/dev/null 2>&1 
           if [ $? -eq 0 ]; then
-          echo -e " -> \e[32mSuccess! "
+            echo -e " -> \e[32mSuccess! "
           else
-          echo -e " - \e[31m< Failed > "
+            echo -e " - \e[31m< Failed > "
           fi
         fi
       done
