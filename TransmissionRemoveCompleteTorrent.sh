@@ -18,14 +18,14 @@ LOG_PATH="/data/Varie"
 AUTOMATIC_FOLDER="Automatici"
 ############ CONFIG ############
 
-[[ "$LOG_ENABLE" == "1" ]] && echo "########## $(date) ##########" >> "$LOG_PATH/$0.log"
+[[ "$LOG_ENABLE" == "1" ]] && echo "########## $(date) ##########" >> "$LOG_PATH/${0##*/}.log"
 
 # use transmission-remote to get torrent list from transmission-remote list
 TORRENTLIST=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --list | awk '{print $1}' | grep -o '[0-9]*'`
 # for each torrent in the list
 for TORRENTID in $TORRENTLIST; do
-	TORRENTNAME=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --info | grep "Name" | awk '{print $2}'`
-	[[ "$LOG_ENABLE" == "1" ]] && echo "* * * * * Checking torrent Nr. $TORRENTID -> $TORRENTNAME * * * * *" >> "$LOG_PATH/$0.log"
+	TORRENTNAME=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --info | grep Name: | sed -e 's/\s\sName:\s//'`
+	[[ "$LOG_ENABLE" == "1" ]] && echo "* * * * * Checking torrent Nr. $TORRENTID -> $TORRENTNAME * * * * *" >> "$LOG_PATH/${0##*/}.log"
 
 	# check if torrent download is completed
 	DL_COMPLETED=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --info | grep "Percent Done: 100%"`
@@ -37,24 +37,23 @@ for TORRENTID in $TORRENTLIST; do
 
 	# if the torrent is "Stopped", "Finished", or "Idle" after downloading 100%"
 	if [ "$DL_COMPLETED" != "" ] && [ "$STATE_STOPPED" != "" ]; then
-		[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID complete!" >> "$LOG_PATH/$0.log"
+		[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID complete!" >> "$LOG_PATH/${0##*/}.log"
 		# remove torrent and data from Transmission
 		if [ "$DL_COMPLETED_PATH" != "" ]; then
-			[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID is automatic, I'll also remove the data!" >> "$LOG_PATH/$0.log"
+			[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID is automatic, I'll also remove the data!" >> "$LOG_PATH/${0##*/}.log"
 			$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --remove-and-delete
 		else
-			[[ "$LOG_ENABLE" == "1" ]] && echo "Removing torrent ..." >> "$LOG_PATH/$0.log"
+			[[ "$LOG_ENABLE" == "1" ]] && echo "Removing torrent ..." >> "$LOG_PATH/${0##*/}.log"
 			$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --remove
 		fi
-		
 	else
-		[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID not complete ..." >> "$LOG_PATH/$0.log"
+		[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID not complete ..." >> "$LOG_PATH/${0##*/}.log"
 	fi
 
 	if [ "$DL_COMPLETED2" != "" ] && [ "$STATE_STOPPED" != "" ]; then
-		[[ "$LOG_ENABLE" == "1" ]] && echo "Seems that torrent Nr. #$TORRENTID is stalled, I'll try to restart it!" >> "$LOG_PATH/$0.log"
+		[[ "$LOG_ENABLE" == "1" ]] && echo "Seems that torrent Nr. #$TORRENTID is stalled, I'll try to restart it!" >> "$LOG_PATH/${0##*/}.log"
 		$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID -s
 	fi
 
-	[[ "$LOG_ENABLE" == "1" ]] && echo -e "* * * * * Checking torrent Nr. $TORRENTID complete. * * * * *\n" >> "$LOG_PATH/$0.log"
+	[[ "$LOG_ENABLE" == "1" ]] && echo -e "* * * * * Checking torrent Nr. $TORRENTID complete. * * * * *\n" >> "$LOG_PATH/${0##*/}.log"
 done
