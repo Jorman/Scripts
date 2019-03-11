@@ -55,7 +55,7 @@ for TORRENTID in $TORRENTLIST; do
 			[[ "$LOG_ENABLE" == "1" ]] && echo "Removing torrent ..." >> "$LOG_PATH/${0##*/}.log"
 			$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --remove
 		fi
-	elif [ "$DONE_AUTO" != "" ] && [ $(( DONE_SEED / 60 / 60 / 24)) -gt $MAXIMUM_SEED ]; then
+	elif [ "$DONE_AUTO" != "" ] && [ $(( DONE_SEED / 60 / 60 / 24)) -gt $MAXIMUM_SEED && [ $MAXIMUM_SEED -gt 0 ]; then
 		[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID is automatic, and have a good seed time. I'll also remove the data!" >> "$LOG_PATH/${0##*/}.log"
 		$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --remove
 	else
