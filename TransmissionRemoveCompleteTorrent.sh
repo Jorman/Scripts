@@ -17,7 +17,7 @@ LOG_PATH="/data/Varie"
 # you have to point to that automatic folder, because when the script run will search for automatic
 AUTOMATIC_FOLDER="Automatici"
 # If more than 0 this will indicate the max seed time (in days) for the automatic torrents. If reached the torrent will be deleted with data
-MAXIMUM_SEED=6
+MAXIMUM_SEED=7
 ############ CONFIG ############
 
 if [[ "$LOG_ENABLE" == "1" ]]; then
@@ -36,36 +36,42 @@ for TORRENTID in $TORRENTLIST; do
 	[[ "$LOG_ENABLE" == "1" ]] && echo "* * * * * Checking torrent Nr. $TORRENTID -> $TORRENTNAME * * * * *" >> "$LOG_PATH/${0##*/}.log"
 
 	# check if torrent download is completed
-	DONE_100=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --info | grep "Percent Done: 100%"`
-	DONE_999=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --info | grep "Percent Done: 99.9%"`
-	DONE_AUTO=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --info | grep "$AUTOMATIC_FOLDER"`
+	PERCENT_DONE=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --info | grep 'Percent Done' | awk '{print $3}' | sed 's/.$//'`
+	DONE_AUTO=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --info | grep Location | awk '{print $2}' | grep "$AUTOMATIC_FOLDER"`
 	DONE_SEED=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --info | grep Seeding | awk -F'[()]' '{print $2}' | grep -o '[[:digit:]]*'`
 
 	# check torrents current state is "Stopped", "Finished", or "Idle"
 	STATE_STOPPED=`$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --info | grep "State: Stopped\|Finished"`
 
-	# if the torrent is "Stopped", "Finished", or "Idle" after downloading 100%"
-	if [ "$DONE_100" != "" ] && [ "$STATE_STOPPED" != "" ]; then
-		[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID complete!" >> "$LOG_PATH/${0##*/}.log"
-		# remove torrent and data from Transmission
-		if [ "$DONE_AUTO" != "" ]; then
-			[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID is automatic, I'll also remove the data!" >> "$LOG_PATH/${0##*/}.log"
-			$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --remove-and-delete
-		else
-			[[ "$LOG_ENABLE" == "1" ]] && echo "Removing torrent ..." >> "$LOG_PATH/${0##*/}.log"
-			$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --remove
+	if [ "$PERCENT_DONE" == "100" ]; then # torrent complete
+		[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent done at $PERCENT_DONE%" >> "$LOG_PATH/${0##*/}.log"
+		if [ "$DONE_AUTO" != "" ]; then # automatic torrent
+			[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent is under automatic folder ..." >> "$LOG_PATH/${0##*/}.log"
+			if [ "$STATE_STOPPED" != "" ]; then # transmission stopped the torrent
+				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent is stopped, I'll remove torrent and data!" >> "$LOG_PATH/${0##*/}.log"
+				$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --remove-and-delete
+			elif [ $(( DONE_SEED / 60 / 60 / 24)) -gt $MAXIMUM_SEED ] && [ $MAXIMUM_SEED -gt 0 ]; then # maximum seed time reached
+				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent have a good seed time ($(( DONE_SEED / 60))/$(( MAXIMUM_SEED * 60 * 24)) minutes). I'll also remove the data!" >> "$LOG_PATH/${0##*/}.log"
+				$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --remove
+			else
+				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent not yet fully finished. Seed time ($(( DONE_SEED / 60))/$(( MAXIMUM_SEED * 60 * 24)) minutes)" >> "$LOG_PATH/${0##*/}.log"
+			fi
+		else # not automatic torrent
+			[[ "$LOG_ENABLE" == "1" ]] && echo "          This's a normal torrent ..." >> "$LOG_PATH/${0##*/}.log"
+			if [ "$STATE_STOPPED" != "" ]; then # transmission stopped the torrent
+				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent is stopped, I'll remove only the torrent!" >> "$LOG_PATH/${0##*/}.log"
+				$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --remove
+			else
+				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent not yet fully finished. Seed time ($(( DONE_SEED / 60))/$(( MAXIMUM_SEED * 60 * 24)) minutes)" >> "$LOG_PATH/${0##*/}.log"
+			fi
 		fi
-	elif [ "$DONE_AUTO" != "" ] && [ $(( DONE_SEED / 60 / 60 / 24)) -gt $MAXIMUM_SEED && [ $MAXIMUM_SEED -gt 0 ]; then
-		[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID is automatic, and have a good seed time. I'll also remove the data!" >> "$LOG_PATH/${0##*/}.log"
-		$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID --remove
-	else
-		[[ "$LOG_ENABLE" == "1" ]] && echo "Torrent Nr. #$TORRENTID not complete ..." >> "$LOG_PATH/${0##*/}.log"
-	fi
-
-	if [ "$DONE_999" != "" ] && [ "$STATE_STOPPED" != "" ]; then
-		[[ "$LOG_ENABLE" == "1" ]] && echo "Seems that torrent Nr. #$TORRENTID is stalled, I'll try to restart it!" >> "$LOG_PATH/${0##*/}.log"
+	elif [ "$PERCENT_DONE" == "99.9" ] && [ "$STATE_STOPPED" != "" ]; then # torrent stalled
+		[[ "$LOG_ENABLE" == "1" ]] && echo "          Seems that torrent Nr. #$TORRENTID is stalled, I'll try to restart it!" >> "$LOG_PATH/${0##*/}.log"
 		$transmission_remote $HOST:$PORT --auth=$USERNAME:$PASSWORD --torrent $TORRENTID -s
+	elif [ "$PERCENT_DONE" == "nan" ]; then # torrent not yet started
+		[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent not yet started" >> "$LOG_PATH/${0##*/}.log"
+	else # torrent not complete
+		[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent not yet finished done at $PERCENT_DONE%" >> "$LOG_PATH/${0##*/}.log"
 	fi
-
 	[[ "$LOG_ENABLE" == "1" ]] && echo -e "* * * * * Checking torrent Nr. $TORRENTID complete. * * * * *\n" >> "$LOG_PATH/${0##*/}.log"
 done
