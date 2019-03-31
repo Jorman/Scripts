@@ -1,6 +1,6 @@
 #!/bin/bash
 
-############ CONFIG ############
+########## CONFIGURATIONS ##########
 # Access Information for Transmission
 USERNAME=
 PASSWORD=
@@ -19,7 +19,7 @@ AUTOMATIC_FOLDER="Automatici"
 # If more than 0 this will indicate the max seed time (in days) for the automatic torrents. If reached the torrent will be deleted
 MAXIMUM_SEED=7
 # If true, this will also delete data for non automatic torrent
-ALSO_REMOVE_NORMAL=false
+ALSO_REMOVE_NORMAL=true
 ############ CONFIG ############
 
 if [[ "$LOG_ENABLE" == "1" ]]; then
@@ -52,7 +52,7 @@ for TORRENTID in $TORRENTLIST; do
 			if [ "$STATE_STOPPED" != "" ]; then # transmission stopped the torrent
 				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent is stopped, I'll remove torrent and data!" >> "$LOG_PATH/${0##*/}.log"
 				$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -rad
-			elif [ $(( DONE_SEED / 60 / 60 / 24)) -gt $MAXIMUM_SEED ] && [ $MAXIMUM_SEED -gt 0 ]; then # maximum seed time reached
+			elif [ $(( DONE_SEED / 60)) -gt $(( MAXIMUM_SEED * 60 * 24)) ] && [ $MAXIMUM_SEED -gt 0 ]; then # maximum seed time reached
 				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent have a good seed time ($(( DONE_SEED / 60))/$(( MAXIMUM_SEED * 60 * 24)) minutes). I'll also remove the data!" >> "$LOG_PATH/${0##*/}.log"
 				$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -rad
 			else
