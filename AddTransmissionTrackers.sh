@@ -2,18 +2,26 @@
 # Original script from -> https://github.com/oilervoss/transmission
 
 ########## CONFIGURATIONS ##########
+# Access Information for Transmission
+USERNAME=
+PASSWORD=
+# Host on which transmission runs
+HOST=localhost
+# Port
+PORT=9091
 # Configure here your private trackers
-PRIVATE_TRACKER_LIST='shareisland,bigtower,girotorrent,alpharatio,torrentbytes'
+PRIVATE_TRACKER_LIST='shareisland,bigtower,girotorrent,alpharatio,torrentbytes,arabafenice,hdtorrents'
 # Configure here your trackers list
-LIVE_TRACKERS_LIST_URL='https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt'
+LIVE_TRACKERS_LIST_URL='https://newtrackon.com/api/stable'
 ########## CONFIGURATIONS ##########
 
-TRACKERS_LIST_FILE=~/TransmissionTrackersList
+TRACKERS_LIST_FILE=~/TorrentTrackersList
 TRANSMISSION_REMOTE="$(which transmission-remote)"
+TRANSMISSION_DAFAULT_ACCESS="$HOST:$PORT -n=$USERNAME:$PASSWORD"
 
-TORRENTS=$($TRANSMISSION_REMOTE -l 2>/dev/null)
+TORRENTS=$($TRANSMISSION_REMOTE $TRANSMISSION_DAFAULT_ACCESS -l 2>/dev/null)
 if [ $? -ne 0 ]; then
-  echo -e "\n\e[0;91;1mFail on transmission. Aborting.\n\e[0m"
+  echo -e "\n\e[0;91;1mFail on Transmission. Aborting.\n\e[0m"
   exit 1
 fi
 
@@ -107,7 +115,7 @@ if [ $# -eq 0 ]; then
     echo -e "addtracker .\t\t- add trackers to all torrents"
     echo -e "Names are case insensitive "
     echo -e "\n\e[0;32;1mCurrent torrents:\e[0;32m"
-    echo "$TORRENTS" | sed -nr 's:(^.{4}).{64}:\1:p'
+    echo "$TORRENTS" | sed -nr 's:(^.{6}).{64}:\1:p'
     echo -e "\n\e[0m"
     exit 1
 fi
@@ -142,20 +150,21 @@ while [ $# -ne 0 ]; do
 
   if [ ! -z "${PARAMETER//[0-9]}" ]; then # not a number given
     PARAMETER=$(echo "$TORRENTS" | \
-      sed -nr '1d;/^Sum:/d;s:(^.{4}).{64}:\1:p' | \
+      sed -nr '1d;/^Sum:/d;s:(^.{6}).{64}:\1:p' | \
       sed -r 's/(\^|-|~|\[|]|\.)/ /g' | \
       grep -iF "$PARAMETER" | \
-      sed -nr 's:(^.{4}).*:\1:;s: ::gp')
+      sed -nr 's:(^.{6}).*:\1:;s: ::gp')
     if [ ! -z "$PARAMETER" ] && [ -z ${PARAMETER//[0-9]} ]; then # not empty and not a number
       NUMBERCHECK=1
       echo -e "\n\e[0;32;1mI found the following torrent:\e[0;32m"
-      echo "$TORRENTS" | sed -nr 's:(^.{4}).{64}:\1:p' | grep -i "$1"
+      echo "$TORRENTS" | sed -nr 's:(^.{6}).{64}:\1:p' | grep -i "$1"
     else
       NUMBERCHECK=0
     fi
   else # a number is given
+    echo "debug 3"
     NUMBERCHECK=$(echo "$TORRENTS" | \
-      sed -nr '1d;/^Sum:/d;s: :0:g;s:^(....).*:\1:p' | \
+      sed -nr '1d;/^Sum:/d;s: :0:g;s:^(......).*:\1:p' | \
       grep $(echo 0000$PARAMETER | sed -nr 's:.*([0-9]{4}$):\1:p'))
   fi
 
@@ -178,21 +187,18 @@ while [ $# -ne 0 ]; do
 
   for TORRENT in $PARAMETER; do
     echo -ne "\n\e[0;1;4;32mFor the Torrent: \e[0;4;32m"
-    $TRANSMISSION_REMOTE -t $TORRENT -i | sed -nr 's/ *Name: ?(.*)/\1/p'
+    $TRANSMISSION_REMOTE $TRANSMISSION_DAFAULT_ACCESS -t $TORRENT -i | sed -nr 's/ *Name: ?(.*)/\1/p'
     PRIVATECHECK=0
 
     if [ ! -z "$PRIVATE_TRACKER_LIST" ]; then #private tracker list present, need some more check
       echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
 
       if [[ ! -z "$sonarr_release_indexer" ]] && [[ $UNLUKYCHECK -ne 1 ]]; then
-        echo -e "\e[33mIndexer given by Sonarr\e[0m"
         INDEXER=$sonarr_release_indexer
       elif [[ ! -z "$radarr_release_indexer" ]] && [[ $UNLUKYCHECK -ne 1 ]]; then
-        echo -e "\e[33mIndexer given by Radarr\e[0m"
         INDEXER=$radarr_release_indexer
       else
-        echo -e "\e[33mIndexer from Torrent\e[0m"
-        INDEXER=$($TRANSMISSION_REMOTE -t $TORRENT -i | sed -nr 's/ *Magnet: ?(.*)/\1/p')
+        INDEXER=$($TRANSMISSION_REMOTE $TRANSMISSION_DAFAULT_ACCESS -t $TORRENT -i | sed -nr 's/ *Magnet: ?(.*)/\1/p')
       fi
 
       for j in ${PRIVATE_TRACKER_LIST//,/ }; do
@@ -211,7 +217,7 @@ while [ $# -ne 0 ]; do
       do
         if [ ! -z "$TRACKER" ]; then
           echo -ne "\e[0;36;1mAdding $TRACKER\e[0;36m"
-          $TRANSMISSION_REMOTE -t $TORRENT -td $TRACKER 1>/dev/null 2>&1 
+          $TRANSMISSION_REMOTE $TRANSMISSION_DAFAULT_ACCESS -t $TORRENT -td $TRACKER 1>/dev/null 2>&1 
           if [ $? -eq 0 ]; then
             echo -e " -> \e[32mSuccess! "
           else
