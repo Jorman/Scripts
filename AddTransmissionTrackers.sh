@@ -1,6 +1,9 @@
 #!/bin/bash
 # Original script from -> https://github.com/oilervoss/transmission
 
+# NOTE:
+# THIS SCRIPT WORK, BUT I'VE TO CHANGE SOME LOGICS SO MAYBE IS BETTER TO HAVE A NEW VERSION
+
 ########## CONFIGURATIONS ##########
 # Access Information for Transmission
 USERNAME=
