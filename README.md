@@ -1,2 +1,2 @@
-# Scripts
-Some script, forked and not to make me crazy!
+# TODO
+Make some good expalation on how to use this scripts
