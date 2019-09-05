@@ -2,25 +2,26 @@
 
 ########## CONFIGURATIONS ##########
 # Access Information for Transmission
-USERNAME=admin
-PASSWORD=adminadmin
+username=admin
+password=adminadmin
 # Host on which transmission runs
-HOST=http://localhost
+host=http://localhost
 # Port
-PORT=8081
+port=8081
 # Configure here your private trackers
-PRIVATE_TRACKER_LIST='shareisland,bigtower,girotorrent,alpharatio,torrentbytes,arabafenice,hdtorrents,jumbohostpro'
+private_tracker_list='shareisland,bigtower,girotorrent,alpharatio,torrentbytes,arabafenice,hdtorrents,jumbohostpro'
 # Configure here your trackers list
-LIVE_TRACKERS_LIST_URL='https://newtrackon.com/api/stable'
+live_trackers_list_url='https://newtrackon.com/api/stable'
 ########## CONFIGURATIONS ##########
 
-TRACKERS_LIST_FILE=~/TorrentTrackersList
-QBT="$(command -v qbt)"
-QBT_DEFAULT_ACCESS="--username $USERNAME --password adminadmin --url $HOST:$PORT"
-bypass="0"
-test_in_progress="0"
+trackers_list_file=~/TorrentTrackersList
+qbt="$(command -v qbt)"
+qbt_default_access="--username $username --password adminadmin --url $host:$port"
+bypass=0
+test_in_progress=0
+applytheforce=0
 
-if [[ -z $QBT ]]; then
+if [[ -z $qbt ]]; then
   echo -e "\n\e[0;91;1mFail on qBittorrent-cli. Aborting.\n\e[0m"
   exit 1
 fi
@@ -28,10 +29,10 @@ fi
 ########## FUNCTIONS ##########
 function upgrade() {
   echo "Downloading/Upgrading traker list ..."
-  wget -O $TRACKERS_LIST_FILE $LIVE_TRACKERS_LIST_URL
+  wget -O $trackers_list_file $live_trackers_list_url
   if [[ $? -ne 0 ]]; then
     echo "I can't download the list, I'll use a static one"
-cat >$TRACKERS_LIST_FILE <<'EOL'
+cat >$trackers_list_file <<'EOL'
 udp://tracker.coppersurfer.tk:6969/announce
 http://tracker.internetwarriors.net:1337/announce
 udp://tracker.internetwarriors.net:1337/announce
@@ -97,6 +98,12 @@ fi
 }
 ########## FUNCTIONS ##########
 
+if [[ "$1" == "--force" ]]; then
+	applytheforce=1
+	shift
+	continue
+fi
+
 if [[ ! -z "$sonarr_download_id" ]] || [[ ! -z "$radarr_download_id" ]]; then
   if [[ ! -z "$sonarr_download_id" ]]; then
     echo "Sonarr varialbe found -> $sonarr_download_id"
@@ -110,45 +117,44 @@ fi
 
 if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]]; then
 	echo "Test in progress, all ok"
-	test_in_progress="1"
+	test_in_progress=1
 fi
 
 if [[ $test_in_progress -eq 1 ]]; then
 	echo "Good-bye!"
 else
-	TORRENTS=$($QBT torrent list --format json $QBT_DEFAULT_ACCESS 2>/dev/null)
+	torrents=$($qbt torrent list --format json $qbt_default_access 2>/dev/null)
 	if [ $? -ne 0 ]; then
 		echo -e "\n\e[0;91;1mFail on qBittorrent. Aborting.\n\e[0m"
 		exit 1
 	fi
 
 	if [ $# -eq 0 ] && [ $bypass -eq 0 ]; then
-	#if [ $# -eq 0 ]; then
 		echo -e "\n\e[31mThis script expects one or more parameters\e[0m"
 		echo -e "\e[0;36m${0##*/} \t\t- list current torrents "
 		echo -e "${0##*/} \$s1 \$s2...\t- add trackers to first torrent with part of name \$s1 and \$s2"
 		echo -e "${0##*/} .\t\t- add trackers to all torrents"
 		echo -e "Names are case insensitive "
 		echo -e "\n\e[0;32;1mCurrent torrents:\e[0;32m"
-		echo "$TORRENTS" | jq --raw-output '.[] .name'
+		echo "$torrents" | jq --raw-output '.[] .name'
 		echo -e "\n\e[0m"
 		exit 1
 	fi
 
-	if [[ -s $TRACKERS_LIST_FILE ]]; then # the file exist and is not empty?
+	if [[ -s $trackers_list_file ]]; then # the file exist and is not empty?
 	  echo "Tracker file exist, I'll check if I need to upgrade it"
 
-	  Days="1"
+	  days="1"
 
 	  # collect both times in seconds-since-the-epoch
-	  Days_ago=$(date -d "now -$Days Days" +%s)
-	  file_time=$(date -r "$TRACKERS_LIST_FILE" +%s)
+	  days_ago=$(date -d "now -$days days" +%s)
+	  file_time=$(date -r "$trackers_list_file" +%s)
 
-	  if (( $file_time <= $Days_ago )); then
-	    echo "File $TRACKERS_LIST_FILE exists and is older than $Days day, I'll upgrade it"
+	  if (( $file_time <= $days_ago )); then
+	    echo "File $trackers_list_file exists and is older than $days day, I'll upgrade it"
 	    upgrade
 	  else
-	    echo "File $TRACKERS_LIST_FILE is not older than $Days Days and I don't need to upgrade it"
+	    echo "File $trackers_list_file is not older than $days days and I don't need to upgrade it"
 	  fi
 
 	else # file don't exist I've to download it
@@ -156,112 +162,108 @@ else
 	  upgrade
 	fi
 
-	TRACKER_LIST=$(cat $TRACKERS_LIST_FILE)
+	tracker_list=$(cat $trackers_list_file)
 
 	if [[ $bypass -eq 0 ]]; then # no bypass
 		while [ $# -ne 0 ]; do
-			PARAMETER="$1"
-			UNLUKYCHECK=0
-			[ "$PARAMETER" = "." ] && PARAMETER="\d"
+			parameter="$1"
+			unlukycheck=0
+			[ "$parameter" = "." ] && parameter="\d"
 
-			# if [ ! -z "${PARAMETER//[0-9]}" ]; then # not empty
-			if [ ! -z "$PARAMETER" ]; then # not empty
-				PARAMETER=$(echo "$TORRENTS" | \
-				jq --raw-output --arg TOSEARCH "$PARAMETER" '.[] | select(.name|test("\($TOSEARCH).";"i")) .name')
+			if [ ! -z "$parameter" ]; then # not empty
+				parameter=$(echo "$torrents" | \
+				jq --raw-output --arg tosearch "$parameter" '.[] | select(.name|test("\($tosearch).";"i")) .name')
 
-				if [ ! -z "$PARAMETER" ]; then # not empty
-					Torrent_Name_Check=1
+				if [ ! -z "$parameter" ]; then # not empty
+					torrent_name_check=1
 					echo -e "\n\e[0;32;1mI found the following torrent:\e[0;32m"
-					echo "$PARAMETER"
+					echo "$parameter"
 				else
-					Torrent_Name_Check=0
+					torrent_name_check=0
 				fi
 			fi
 
-			if [ ${Torrent_Name_Check:-0} -eq 0 ]; then
+			if [ ${torrent_name_check:-0} -eq 0 ]; then
 				echo -e "\n\e[0;31;1mI didn't find a torrent with the text: \e[21m$1"
 				echo -e "\e[0m"
 				shift
 				continue
 			fi
 
-			while read TORRENT; do
+			while read torrent; do
 				echo -ne "\n\e[0;1;4;32mFor the Torrent: \e[0;4;32m"
-				echo "$TORRENT"
-				PRIVATECHECK=0
+				echo "$torrent"
+				private_check=0
 
-				if [ ! -z "$PRIVATE_TRACKER_LIST" ]; then #private tracker list present, need some more check
+				if [ ! -z "$private_tracker_list" ] && [[ $applytheforce -eq 0 ]]; then #private tracker list present, need some more check
 					echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
 
-					for j in ${PRIVATE_TRACKER_LIST//,/ }; do
-						if [[ "${INDEXER,,}" =~ "${j,,}" ]];then
+					for j in ${private_tracker_list//,/ }; do
+						if [[ "${indexer,,}" =~ "${j,,}" ]];then
 							echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
-							PRIVATECHECK=1
+							private_check=1
 							break #if just one is found, stop the loop
 						else
 							echo -e "\e[0m\e[33mNo private tracker found, let's move on\e[0m"
 						fi
 					done
 				else #private tracker list not present, no extra check needed
-					echo "Private tracker list not present, proceding like usual"
+					echo "Private tracker list not present or --force parameter used, proceding like usual"
 				fi
 
-				if [ $PRIVATECHECK -eq 0 ]; then
-					while read TRACKER; do
-						if [ ! -z "$TRACKER" ]; then
-							echo -ne "\e[0;36;1mAdding $TRACKER\e[0;36m"
-							hash=$(echo "$TORRENTS" | \
-							jq --raw-output --arg TOSEARCH "$TORRENT" '.[] | select(.name == "\($TOSEARCH)") | .hash')
-							$QBT torrent tracker add $hash $TRACKER $QBT_DEFAULT_ACCESS
+				if [ $private_check -eq 0 ]; then
+					while read tracker; do
+						if [ ! -z "$tracker" ]; then
+							echo -ne "\e[0;36;1mAdding $tracker\e[0;36m"
+							hash=$(echo "$torrents" | \
+							jq --raw-output --arg tosearch "$torrent" '.[] | select(.name == "\($tosearch)") | .hash')
+							$qbt torrent tracker add $hash $tracker $qbt_default_access
 							if [ $? -eq 0 ]; then
 								echo -e " -> \e[32mSuccess! "
 							else
 								echo -e " - \e[31m< Failed > "
 							fi
 						fi
-					done <<< "$TRACKER_LIST"
+					done <<< "$tracker_list"
 				fi
-			done <<< "$PARAMETER"
+			done <<< "$parameter"
 			shift
 		done
 	else # bypass active, so or sonarr or radarr var found
-		if [ ! -z "$PRIVATE_TRACKER_LIST" ]; then #private tracker list present, need some more check
+		if [ ! -z "$private_tracker_list" ] && [[ $applytheforce -eq 0 ]]; then #private tracker list present, need some more check
 			echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
 
 			if [[ ! -z "$sonarr_download_id" ]]; then
-				INDEXER=$(echo "$TORRENTS" | \
-				#jq --raw-output --arg TOSEARCH "$TORRENT" '.[] | select(.name|test("\($TOSEARCH)";"i")) .magnet_uri')
-				jq --raw-output --arg TOSEARCH "$sonarr_download_id" '.[] | select(.hash == "\($TOSEARCH)") | .magnet_uri')
+				indexer=$(echo "$torrents" | \
+				jq --raw-output --arg tosearch "$sonarr_download_id" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
 				hash=$sonarr_download_id
 			else
-				INDEXER=$(echo "$TORRENTS" | \
-				#jq --raw-output --arg TOSEARCH "$TORRENT" '.[] | select(.name|test("\($TOSEARCH)";"i")) .magnet_uri')
-				jq --raw-output --arg TOSEARCH "$radarr_download_id" '.[] | select(.hash == "\($TOSEARCH)") | .magnet_uri')
+				indexer=$(echo "$torrents" | \
+				jq --raw-output --arg tosearch "$radarr_download_id" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
 				hash=$radarr_download_id
 			fi
 
-			for j in ${PRIVATE_TRACKER_LIST//,/ }; do
-				if [[ "${INDEXER,,}" =~ "${j,,}" ]];then
+			for j in ${private_tracker_list//,/ }; do
+				if [[ "${indexer,,}" =~ "${j,,}" ]];then
 					echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 					exit
-					# break #if just one is found, stop the loop
 				fi
 			done
 		else #private tracker list not present, no extra check needed
-			echo "Private tracker list not present, proceding like usual"
+			echo "Private tracker list not present or --force parameter used, proceding like usual"
 		fi
 
-		while read TRACKER; do
-			if [ ! -z "$TRACKER" ]; then
-				echo -ne "\e[0;36;1mAdding $TRACKER\e[0;36m"
-				$QBT torrent tracker add $hash $TRACKER $QBT_DEFAULT_ACCESS
+		while read tracker; do
+			if [ ! -z "$tracker" ]; then
+				echo -ne "\e[0;36;1mAdding $tracker\e[0;36m"
+				$qbt torrent tracker add $hash $tracker $qbt_default_access
 				if [ $? -eq 0 ]; then
 					echo -e " -> \e[32mSuccess! "
 				else
 					echo -e " - \e[31m< Failed > "
 				fi
 			fi
-		done <<< "$TRACKER_LIST"
+		done <<< "$tracker_list"
 	fi
 fi
 
