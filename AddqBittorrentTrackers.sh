@@ -2,8 +2,8 @@
 
 ########## CONFIGURATIONS ##########
 # Access Information for Transmission
-username=admin
-password=adminadmin
+username="admin"
+password="adminadmin"
 # Host on which transmission runs
 host=http://localhost
 # Port
@@ -16,7 +16,7 @@ live_trackers_list_url='https://newtrackon.com/api/stable'
 
 trackers_list_file=~/TorrentTrackersList
 qbt="$(command -v qbt)"
-qbt_default_access="--username $username --password adminadmin --url $host:$port"
+qbt_default_access="--username $username --password $password --url $host:$port"
 bypass=0
 test_in_progress=0
 applytheforce=0
@@ -28,10 +28,10 @@ fi
 
 ########## FUNCTIONS ##########
 function upgrade() {
-  echo "Downloading/Upgrading traker list ..."
-  wget -O $trackers_list_file $live_trackers_list_url
-  if [[ $? -ne 0 ]]; then
-    echo "I can't download the list, I'll use a static one"
+	echo "Downloading/Upgrading traker list ..."
+	wget -O $trackers_list_file $live_trackers_list_url
+	if [[ $? -ne 0 ]]; then
+		echo "I can't download the list, I'll use a static one"
 cat >$trackers_list_file <<'EOL'
 udp://tracker.coppersurfer.tk:6969/announce
 http://tracker.internetwarriors.net:1337/announce
@@ -93,8 +93,9 @@ http://retracker.mgts.by:80/announce
 http://peersteers.org:80/announce
 http://fxtt.ru:80/announce
 EOL
-fi
-  echo "Downloading/Upgrading done."
+	fi
+	sed -i '/^$/d' $trackers_list_file
+	echo "Downloading/Upgrading done."
 }
 ########## FUNCTIONS ##########
 
@@ -167,7 +168,6 @@ else
 	if [[ $bypass -eq 0 ]]; then # no bypass
 		while [ $# -ne 0 ]; do
 			parameter="$1"
-			unlukycheck=0
 			[ "$parameter" = "." ] && parameter="\d"
 
 			if [ ! -z "$parameter" ]; then # not empty
@@ -199,14 +199,15 @@ else
 					echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
 
 					for j in ${private_tracker_list//,/ }; do
-						if [[ "${indexer,,}" =~ "${j,,}" ]];then
+						if [[ "${indexer,,}" =~ ${j,,} ]];then
 							echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 							private_check=1
 							break #if just one is found, stop the loop
-						else
-							echo -e "\e[0m\e[33mNo private tracker found, let's move on\e[0m"
+						# else
+						# 	echo -e "\e[0m\e[33mNo private tracker found, let's move on\e[0m"
 						fi
 					done
+					echo -e "\e[0m\e[33mNo private tracker found, let's move on\e[0m"
 				else #private tracker list not present, no extra check needed
 					echo "Private tracker list not present or --force parameter used, proceding like usual"
 				fi
@@ -244,7 +245,7 @@ else
 			fi
 
 			for j in ${private_tracker_list//,/ }; do
-				if [[ "${indexer,,}" =~ "${j,,}" ]];then
+				if [[ "${indexer,,}" =~ ${j,,} ]];then
 					echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 					exit
 				fi
