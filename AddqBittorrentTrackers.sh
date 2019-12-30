@@ -1,10 +1,10 @@
 #!/bin/bash
 
 ########## CONFIGURATIONS ##########
-# Access Information for Transmission
+# Access Information for qBittorrent
 username="admin"
 password="adminadmin"
-# Host on which transmission runs
+# Host on which qBittorrent runs
 host=http://localhost
 # Port
 port=8081
