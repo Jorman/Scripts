@@ -23,6 +23,7 @@ applytheforce=0
 
 if [[ -z $qbt ]]; then
   echo -e "\n\e[0;91;1mFail on qBittorrent-cli. Aborting.\n\e[0m"
+  echo "You can find it here: https://github.com/fedarovich/qbittorrent-cli"
   exit 1
 fi
 
