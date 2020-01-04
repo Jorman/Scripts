@@ -8,7 +8,7 @@ PASSWORD=
 HOST=localhost
 # Port
 PORT=9091
-transmission_remote="$(which transmission-remote)"
+transmission_remote="$(command -v transmission-remote)"
 # Log
 LOG_ENABLE=1
 LOG_PATH="/data/Varie"
