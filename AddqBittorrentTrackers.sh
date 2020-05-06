@@ -9,7 +9,7 @@ host=http://localhost
 # Port
 port=8081
 # Configure here your private trackers
-private_tracker_list='shareisland,bigtower,girotorrent,alpharatio,torrentbytes,arabafenice,hdtorrents,jumbohostpro'
+private_tracker_list='jumbohostpro,connecting,torrentbytes,shareisland,hdtorrents,girotorrent,bigtower,arabafenice,alpharatio,netcosmo,torrentleech,tleechreload'
 # Configure here your trackers list
 live_trackers_list_url='https://newtrackon.com/api/stable'
 ########## CONFIGURATIONS ##########
@@ -106,8 +106,8 @@ if [[ "$1" == "--force" ]]; then
 	continue
 fi
 
-if [[ ! -z "$sonarr_download_id" ]] || [[ ! -z "$radarr_download_id" ]]; then
-  if [[ ! -z "$sonarr_download_id" ]]; then
+if [[ -n "$sonarr_download_id" ]] || [[ -n "$radarr_download_id" ]]; then
+  if [[ -n "$sonarr_download_id" ]]; then
     echo "Sonarr varialbe found -> $sonarr_download_id"
     sonarr_download_id=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
   else
@@ -171,11 +171,11 @@ else
 			parameter="$1"
 			[ "$parameter" = "." ] && parameter="\d"
 
-			if [ ! -z "$parameter" ]; then # not empty
+			if [ -n "$parameter" ]; then # not empty
 				parameter=$(echo "$torrents" | \
 				jq --raw-output --arg tosearch "$parameter" '.[] | select(.name|test("\($tosearch).";"i")) .name')
 
-				if [ ! -z "$parameter" ]; then # not empty
+				if [ -n "$parameter" ]; then # not empty
 					torrent_name_check=1
 					echo -e "\n\e[0;32;1mI found the following torrent:\e[0;32m"
 					echo "$parameter"
@@ -191,16 +191,24 @@ else
 				continue
 			fi
 
+
+######## LOGICA SBAGLIATA, SE è PRESENTE LA LISTA ALLORA SI FA IL CHECK ALTRIMENTI NO
+
+
+
 			while read torrent; do
 				echo -ne "\n\e[0;1;4;32mFor the Torrent: \e[0;4;32m"
 				echo "$torrent"
 				private_check=0
 
-				if [ ! -z "$private_tracker_list" ] && [[ $applytheforce -eq 0 ]]; then #private tracker list present, need some more check
+				if [ -n "$private_tracker_list" ] && [[ $applytheforce -eq 0 ]]; then #private tracker list present, need some more check
 					echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
 
+					trackers_list=$(echo "$torrents" | \
+					jq --raw-output --arg tosearch "$torrent" '.[] | select(.name == "\($tosearch)") | .magnet_uri')
+
 					for j in ${private_tracker_list//,/ }; do
-						if [[ "${indexer,,}" =~ ${j,,} ]];then
+						if [[ "${trackers_list,,}" =~ ${j,,} ]];then
 							echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 							private_check=1
 							break #if just one is found, stop the loop
@@ -208,14 +216,16 @@ else
 						# 	echo -e "\e[0m\e[33mNo private tracker found, let's move on\e[0m"
 						fi
 					done
+
 					echo -e "\e[0m\e[33mNo private tracker found, let's move on\e[0m"
+
 				else #private tracker list not present, no extra check needed
 					echo "Private tracker list not present or --force parameter used, proceding like usual"
 				fi
 
 				if [ $private_check -eq 0 ]; then
 					while read tracker; do
-						if [ ! -z "$tracker" ]; then
+						if [ -n "$tracker" ]; then
 							echo -ne "\e[0;36;1mAdding $tracker\e[0;36m"
 							hash=$(echo "$torrents" | \
 							jq --raw-output --arg tosearch "$torrent" '.[] | select(.name == "\($tosearch)") | .hash')
@@ -232,21 +242,21 @@ else
 			shift
 		done
 	else # bypass active, so or sonarr or radarr var found
-		if [ ! -z "$private_tracker_list" ] && [[ $applytheforce -eq 0 ]]; then #private tracker list present, need some more check
+		if [ -n "$private_tracker_list" ] && [[ $applytheforce -eq 0 ]]; then #private tracker list present, need some more check
 			echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
 
-			if [[ ! -z "$sonarr_download_id" ]]; then
-				indexer=$(echo "$torrents" | \
+			if [[ -n "$sonarr_download_id" ]]; then
+				trackers_list=$(echo "$torrents" | \
 				jq --raw-output --arg tosearch "$sonarr_download_id" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
 				hash=$sonarr_download_id
 			else
-				indexer=$(echo "$torrents" | \
+				trackers_list=$(echo "$torrents" | \
 				jq --raw-output --arg tosearch "$radarr_download_id" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
 				hash=$radarr_download_id
 			fi
 
 			for j in ${private_tracker_list//,/ }; do
-				if [[ "${indexer,,}" =~ ${j,,} ]];then
+				if [[ "${trackers_list,,}" =~ ${j,,} ]];then
 					echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 					exit
 				fi
@@ -256,7 +266,7 @@ else
 		fi
 
 		while read tracker; do
-			if [ ! -z "$tracker" ]; then
+			if [ -n "$tracker" ]; then
 				echo -ne "\e[0;36;1mAdding $tracker\e[0;36m"
 				$qbt torrent tracker add $hash $tracker $qbt_default_access
 				if [ $? -eq 0 ]; then
