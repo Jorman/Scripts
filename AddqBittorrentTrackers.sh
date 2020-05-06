@@ -191,11 +191,6 @@ else
 				continue
 			fi
 
-
-######## LOGICA SBAGLIATA, SE è PRESENTE LA LISTA ALLORA SI FA IL CHECK ALTRIMENTI NO
-
-
-
 			while read torrent; do
 				echo -ne "\n\e[0;1;4;32mFor the Torrent: \e[0;4;32m"
 				echo "$torrent"
@@ -212,18 +207,14 @@ else
 							echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 							private_check=1
 							break #if just one is found, stop the loop
-						# else
-						# 	echo -e "\e[0m\e[33mNo private tracker found, let's move on\e[0m"
 						fi
 					done
-
-					echo -e "\e[0m\e[33mNo private tracker found, let's move on\e[0m"
-
 				else #private tracker list not present, no extra check needed
 					echo "Private tracker list not present or --force parameter used, proceding like usual"
 				fi
 
 				if [ $private_check -eq 0 ]; then
+					echo -e "\e[0m\e[33mNo private tracker found, let's move on\e[0m"
 					while read tracker; do
 						if [ -n "$tracker" ]; then
 							echo -ne "\e[0;36;1mAdding $tracker\e[0;36m"
