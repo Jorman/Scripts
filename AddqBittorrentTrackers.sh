@@ -115,6 +115,32 @@ inject_trackers () {
 	done <<< "$tracker_list"
 	echo "Done!"
 }
+
+generate_trackers_list () {
+	if [[ -s "$trackers_list_file" ]]; then # the file exist and is not empty?
+		echo "Tracker file exist, I'll check if I need to upgrade it"
+
+		days="1"
+
+		# collect both times in seconds-since-the-epoch
+		days_ago=$(date -d "now -$days days" +%s)
+		file_time=$(date -r "$trackers_list_file" +%s)
+
+		if (( $file_time <= $days_ago )); then
+			echo "File $trackers_list_file exists and is older than $days day, I'll upgrade it"
+			tracker_list_upgrade
+		else
+			echo "File $trackers_list_file is not older than $days days and I don't need to upgrade it"
+		fi
+
+	else # file don't exist I've to download it
+		echo "Tracker file don't exist I'll create a new one"
+		tracker_list_upgrade
+	fi
+
+	tracker_list=$(cat "$trackers_list_file")
+	number_of_trackers_in_list=$(grep "" -c "$trackers_list_file")
+}
 ########## FUNCTIONS ##########
 
 if [ "$1" == "--force" ]; then
@@ -145,6 +171,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 	#statements
 	echo "Getting torrents list ..."
 	torrents=$($qbt torrent list --format json $qbt_default_access 2>/dev/null)
+
 	if [ $? -ne 0 ]; then
 		echo -e "\n\e[0;91;1mFail on qBittorrent. Aborting.\n\e[0m"
 		exit 1
@@ -160,30 +187,6 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		echo "$torrents" | jq --raw-output '.[] .name'
 		exit 1
 	fi
-
-	if [[ -s "$trackers_list_file" ]]; then # the file exist and is not empty?
-		echo "Tracker file exist, I'll check if I need to upgrade it"
-
-		days="1"
-
-		# collect both times in seconds-since-the-epoch
-		days_ago=$(date -d "now -$days days" +%s)
-		file_time=$(date -r "$trackers_list_file" +%s)
-
-		if (( $file_time <= $days_ago )); then
-			echo "File $trackers_list_file exists and is older than $days day, I'll upgrade it"
-			tracker_list_upgrade
-		else
-			echo "File $trackers_list_file is not older than $days days and I don't need to upgrade it"
-		fi
-
-	else # file don't exist I've to download it
-		echo "Tracker file don't exist I'll create a new one"
-		tracker_list_upgrade
-	fi
-
-	tracker_list=$(cat "$trackers_list_file")
-	number_of_trackers_in_list=$(grep "" -c "$trackers_list_file")
 
 	while [ $# -ne 0 ]; do
 		tor_to_search="$1"
@@ -233,6 +236,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 
 				if [ $private_check -eq 0 ]; then
 					echo -e "\e[0m\e[33mThe torrent is not private, I'll inject trackers on it\e[0m"
+					generate_trackers_list
 					inject_trackers ${tor_hash_array[$i]}
 				fi
 			else
@@ -241,27 +245,28 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 				else
 					echo -e "\e[0m\e[33mPrivate tracker list not present, proceding like usual\e[0m"
 				fi
+				generate_trackers_list
 				inject_trackers ${tor_hash_array[$i]}
 			fi
 		done
 	else
 		echo "No torrents found, exiting"
 	fi
-
 else # auto_tor_grab active, so radarr or sonarr
-
 	if [ -n "$sonarr_download_id" ]; then
+		echo "Auto torrent mode, Sonarr download"
 		hash=$sonarr_download_id
 	else
+		echo "Auto torrent mode, Radarr download"
 		hash=$radarr_download_id
 	fi
 
 	if [ -n "$private_tracker_list" ]; then #private tracker list present, need some more check
 		echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
 		tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
-
+		
 		for j in ${private_tracker_list//,/ }; do
-			if [[ "${tor_trackers_list,,}" =~ ${j,,} ]];then
+			if [[ "$tor_trackers_list" =~ ${j,,} ]];then
 				echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 				exit
 			fi
@@ -270,6 +275,6 @@ else # auto_tor_grab active, so radarr or sonarr
 	else
 		echo -e "\e[0m\e[33mPrivate tracker list not present, proceding like usual\e[0m"
 	fi
-
+	generate_trackers_list
 	inject_trackers $hash
 fi
