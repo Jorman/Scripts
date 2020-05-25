@@ -24,3 +24,5 @@ Is also possible to run the script manually, simply run the script followed by t
 ./AddqBittorrentTrackers.sh test
 This will trigger the script and add trackers in all torrent that is not private "from a given list" and that contain test (case insensitive)
 -----------------------------------------------------------------------------------------
+# AddTransmissionTrackers.sh
+actually I want to try to write down the new logic, quite similar to the qBittorrent one

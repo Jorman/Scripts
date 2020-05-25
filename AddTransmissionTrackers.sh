@@ -165,7 +165,6 @@ while [ $# -ne 0 ]; do
       NUMBERCHECK=0
     fi
   else # a number is given
-    echo "debug 3"
     NUMBERCHECK=$(echo "$TORRENTS" | \
       sed -nr '1d;/^Sum:/d;s: :0:g;s:^(......).*:\1:p' | \
       grep $(echo 0000$PARAMETER | sed -nr 's:.*([0-9]{4}$):\1:p'))
