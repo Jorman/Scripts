@@ -2,91 +2,91 @@
 
 ########## CONFIGURATIONS ##########
 # Access Information for Transmission
-USERNAME=
-PASSWORD=
-# Host on which transmission runs
-HOST=localhost
-# Port
-PORT=9091
-transmission_remote="$(command -v transmission-remote)"
-# Log
-LOG_ENABLE=1
-LOG_PATH="/data/Varie"
+t_username=
+t_password=
+# Host where transmission runs
+t_host=localhost
+# Transmission port
+t_port=9091
+t_remote="$(command -v transmission-remote)"
+# Log 0 for disable | 1 for enable
+t_log=1
+t_log_path="/data/Varie"
 # Folder for automatic download? Be carefull must be different and not included into the default Download folder of transmission
-# for example your download go to /data/download and your automatic download from transmission go to /data/download/automatic
+# for example if your download go to /data/download and your automatic download from transmission go to /data/download/automatic
 # you have to point to that automatic folder, because when the script run will search for automatic
-AUTOMATIC_FOLDER="Automatici"
+automatic_folder="Automatici"
 # If more than 0 this will indicate the max seed time (in days) for the automatic torrents. If reached the torrent will be deleted
-MAXIMUM_SEED=7
+max_days_seed=7
 # If true, this will also delete data for non automatic torrent
-ALSO_REMOVE_NORMAL=true
-############ CONFIG ############
+remove_normal=true
+########## CONFIGURATIONS ##########
 
-if [[ "$LOG_ENABLE" == "1" ]]; then
-	if [[ ! -w "$LOG_PATH/${0##*/}.log" ]]; then
-		touch "$LOG_PATH/${0##*/}.log"
+if [[ "$t_log" == "1" ]]; then
+	if [[ ! -w "$t_log_path/${0##*/}.log" ]]; then
+		touch "$t_log_path/${0##*/}.log"
 	fi
 fi
 
-[[ "$LOG_ENABLE" == "1" ]] && echo "########## $(date) ##########" >> "$LOG_PATH/${0##*/}.log"
+[[ "$t_log" == "1" ]] && echo "########## $(date) ##########" >> "$t_log_path/${0##*/}.log"
 
 # use transmission-remote to get torrent list from transmission-remote list
-TORRENTLIST=`$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -l | awk '{print $1}' | grep -o '[0-9]*'`
+torrent_list=`$t_remote $t_host:$t_port -n=$t_username:$t_password -l | awk '{print $1}' | grep -o '[0-9]*'`
 # for each torrent in the list
-for TORRENTID in $TORRENTLIST; do
-	TORRENTNAME=`$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -i | grep Name: | sed -e 's/\s\sName:\s//'`
-	[[ "$LOG_ENABLE" == "1" ]] && echo "* * * * * Checking torrent Nr. $TORRENTID -> $TORRENTNAME * * * * *" >> "$LOG_PATH/${0##*/}.log"
+for torrent_id in $torrent_list; do
+	torrent_name=`$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -i | grep Name: | sed -e 's/\s\sName:\s//'`
+	[[ "$t_log" == "1" ]] && echo "* * * * * Checking torrent Nr. $torrent_id -> $torrent_name * * * * *" >> "$t_log_path/${0##*/}.log"
 
 	# check if torrent download is completed
-	PERCENT_DONE=`$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -i | grep 'Percent Done' | awk '{print $3}' | sed 's/.$//'`
-	DONE_AUTO=`$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -i | grep Location | awk '{print $2}' | grep "$AUTOMATIC_FOLDER"`
-	DONE_SEED=`$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -i | grep Seeding | awk -F'[()]' '{print $2}' | grep -o '[[:digit:]]*'`
+	percent_done=`$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -i | grep 'Percent Done' | awk '{print $3}' | sed 's/.$//'`
+	done_auto=`$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -i | grep Location | awk '{print $2}' | grep "$automatic_folder"`
+	done_seed=`$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -i | grep Seeding | awk -F'[()]' '{print $2}' | grep -o '[[:digit:]]*'`
 
 	# check torrents current state is "Stopped", "Finished", or "Idle"
-	STATE_STOPPED=`$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -i | grep "State: Stopped\|Finished"`
+	state_stopped=`$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -i | grep "State: Stopped\|Finished"`
 
-	if [ "$PERCENT_DONE" == "100" ]; then # torrent complete
-		[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent done at $PERCENT_DONE%" >> "$LOG_PATH/${0##*/}.log"
-		if [ "$DONE_AUTO" != "" ]; then # automatic torrent
-			[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent is under automatic folder ..." >> "$LOG_PATH/${0##*/}.log"
-			if [ "$STATE_STOPPED" != "" ]; then # transmission stopped the torrent
-				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent is stopped, I'll remove torrent and data!" >> "$LOG_PATH/${0##*/}.log"
-				$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -rad
-			elif [ $(( DONE_SEED / 60)) -gt $(( MAXIMUM_SEED * 60 * 24)) ] && [ $MAXIMUM_SEED -gt 0 ]; then # maximum seed time reached
-				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent have a good seed time ($(( DONE_SEED / 60))/$(( MAXIMUM_SEED * 60 * 24)) minutes). I'll also remove the data!" >> "$LOG_PATH/${0##*/}.log"
-				$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -rad
+	if [ "$percent_done" == "100" ]; then # torrent complete
+		[[ "$t_log" == "1" ]] && echo "          Torrent done at $percent_done%" >> "$t_log_path/${0##*/}.log"
+		if [ "$done_auto" != "" ]; then # automatic torrent
+			[[ "$t_log" == "1" ]] && echo "          Torrent is under automatic folder ..." >> "$t_log_path/${0##*/}.log"
+			if [ "$state_stopped" != "" ]; then # transmission stopped the torrent
+				[[ "$t_log" == "1" ]] && echo "          Torrent is stopped, I'll remove torrent and data!" >> "$t_log_path/${0##*/}.log"
+				$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -rad
+			elif [ $(( done_seed / 60)) -gt $(( max_days_seed * 60 * 24)) ] && [ $max_days_seed -gt 0 ]; then # maximum seed time reached
+				[[ "$t_log" == "1" ]] && echo "          Torrent have a good seed time ($(( done_seed / 60))/$(( max_days_seed * 60 * 24)) minutes). I'll also remove the data!" >> "$t_log_path/${0##*/}.log"
+				$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -rad
 			else
-				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent not yet fully finished. Seed time ($(( DONE_SEED / 60))/$(( MAXIMUM_SEED * 60 * 24)) minutes)" >> "$LOG_PATH/${0##*/}.log"
+				[[ "$t_log" == "1" ]] && echo "          Torrent not yet fully finished. Seed time ($(( done_seed / 60))/$(( max_days_seed * 60 * 24)) minutes)" >> "$t_log_path/${0##*/}.log"
 			fi
 		else # not automatic torrent
-			[[ "$LOG_ENABLE" == "1" ]] && echo "          This's a normal torrent ..." >> "$LOG_PATH/${0##*/}.log"
-			if [ "$STATE_STOPPED" != "" ]; then # transmission stopped the torrent
-				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent is stopped" >> "$LOG_PATH/${0##*/}.log"
-				if [[ "$ALSO_REMOVE_NORMAL" == "true" ]]; then
-					[[ "$LOG_ENABLE" == "1" ]] && echo "          Also remove normal torrent is active, I'll remove torrent and data!" >> "$LOG_PATH/${0##*/}.log"
-					$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -rad
+			[[ "$t_log" == "1" ]] && echo "          This's a normal torrent ..." >> "$t_log_path/${0##*/}.log"
+			if [ "$state_stopped" != "" ]; then # transmission stopped the torrent
+				[[ "$t_log" == "1" ]] && echo "          Torrent is stopped" >> "$t_log_path/${0##*/}.log"
+				if [[ "$remove_normal" == "true" ]]; then
+					[[ "$t_log" == "1" ]] && echo "          Also remove normal torrent is active, I'll remove torrent and data!" >> "$t_log_path/${0##*/}.log"
+					$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -rad
 				else
-					$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -r
+					$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -r
 				fi
-			elif [ $(( DONE_SEED / 60 / 60 / 24)) -gt $MAXIMUM_SEED ] && [ $MAXIMUM_SEED -gt 0 ]; then # maximum seed time reached
-				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent have a good seed time ($(( DONE_SEED / 60))/$(( MAXIMUM_SEED * 60 * 24)) minutes)" >> "$LOG_PATH/${0##*/}.log"
-				if [[ "$ALSO_REMOVE_NORMAL" == "true" ]]; then
-					[[ "$LOG_ENABLE" == "1" ]] && echo "          Also remove normal torrent is active, I'll remove torrent and data!" >> "$LOG_PATH/${0##*/}.log"
-					$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -rad
+			elif [ $(( done_seed / 60 / 60 / 24)) -gt $max_days_seed ] && [ $max_days_seed -gt 0 ]; then # maximum seed time reached
+				[[ "$t_log" == "1" ]] && echo "          Torrent have a good seed time ($(( done_seed / 60))/$(( max_days_seed * 60 * 24)) minutes)" >> "$t_log_path/${0##*/}.log"
+				if [[ "$remove_normal" == "true" ]]; then
+					[[ "$t_log" == "1" ]] && echo "          Also remove normal torrent is active, I'll remove torrent and data!" >> "$t_log_path/${0##*/}.log"
+					$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -rad
 				else
-					$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -r
+					$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -r
 				fi
 			else
-				[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent not yet fully finished. Seed time ($(( DONE_SEED / 60))/$(( MAXIMUM_SEED * 60 * 24)) minutes)" >> "$LOG_PATH/${0##*/}.log"
+				[[ "$t_log" == "1" ]] && echo "          Torrent not yet fully finished. Seed time ($(( done_seed / 60))/$(( max_days_seed * 60 * 24)) minutes)" >> "$t_log_path/${0##*/}.log"
 			fi
 		fi
-	elif [ "$PERCENT_DONE" == "99.9" ] && [ "$STATE_STOPPED" != "" ]; then # torrent stalled
-		[[ "$LOG_ENABLE" == "1" ]] && echo "          Seems that torrent Nr. #$TORRENTID is stalled, I'll try to restart it!" >> "$LOG_PATH/${0##*/}.log"
-		$transmission_remote $HOST:$PORT -n=$USERNAME:$PASSWORD -t $TORRENTID -s
-	elif [ "$PERCENT_DONE" == "nan" ]; then # torrent not yet started
-		[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent not yet started" >> "$LOG_PATH/${0##*/}.log"
+	elif [ "$percent_done" == "99.9" ] && [ "$state_stopped" != "" ]; then # torrent stalled
+		[[ "$t_log" == "1" ]] && echo "          Seems that torrent Nr. #$torrent_id is stalled, I'll try to restart it!" >> "$t_log_path/${0##*/}.log"
+		$t_remote $t_host:$t_port -n=$t_username:$t_password -t $torrent_id -s
+	elif [ "$percent_done" == "nan" ]; then # torrent not yet started
+		[[ "$t_log" == "1" ]] && echo "          Torrent not yet started" >> "$t_log_path/${0##*/}.log"
 	else # torrent not complete
-		[[ "$LOG_ENABLE" == "1" ]] && echo "          Torrent not yet finished done at $PERCENT_DONE%" >> "$LOG_PATH/${0##*/}.log"
+		[[ "$t_log" == "1" ]] && echo "          Torrent not yet finished done at $percent_done%" >> "$t_log_path/${0##*/}.log"
 	fi
-	[[ "$LOG_ENABLE" == "1" ]] && echo -e "* * * * * Checking torrent Nr. $TORRENTID complete. * * * * *\n" >> "$LOG_PATH/${0##*/}.log"
+	[[ "$t_log" == "1" ]] && echo -e "* * * * * Checking torrent Nr. $torrent_id complete. * * * * *\n" >> "$t_log_path/${0##*/}.log"
 done

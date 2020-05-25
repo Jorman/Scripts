@@ -5,9 +5,10 @@
 # older than a specific number of days and
 # remove all empty subdirs afterwards.
 #
+# in your smb.conf:
 # make sure you set recycle:touch = yes
-# in your smb.conf.
-# cron with something like 00 01 * * * clean_samba_recycle.sh
+# in order to periodically delete old files, you can
+# cron the script with something like 00 01 * * * clean_samba_recycle.sh
 
 # set vars
 recycle_dir1='/data/Download/.recycle'
