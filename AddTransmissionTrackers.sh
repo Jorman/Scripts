@@ -260,6 +260,14 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
     echo "No torrents found, exiting"
   fi
 else # auto_tor_grab active, so radarr or sonarr
+  secs=10
+  echo "I'll wait $secs to be sure ..."
+  while [ $secs -gt 0 ]; do
+    echo -ne "$secs\033[0K\r"
+    sleep 1
+    : $((secs--))
+  done
+
   if [ -n "$sonarr_download_id" ]; then
     echo "Auto torrent mode, Sonarr download"
     hash=$sonarr_download_id
