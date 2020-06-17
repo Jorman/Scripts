@@ -9,7 +9,7 @@ host=http://localhost
 # Port
 port=8081
 # Configure here your private trackers
-private_tracker_list='jumbohostpro,connecting,torrentbytes,shareisland,hdtorrents,girotorrent,bigtower,arabafenice,alpharatio,netcosmo,torrentleech,tleechreload'
+private_tracker_list='jumbohostpro,connecting,torrentbytes,shareisland,hdtorrents,girotorrent,bigtower,arabafenice,alpharatio,netcosmo,torrentleech,tleechreload,milkie'
 # Configure here your trackers list
 live_trackers_list_url='https://newtrackon.com/api/stable'
 ########## CONFIGURATIONS ##########
@@ -168,7 +168,6 @@ fi
 if [ $test_in_progress -eq 1 ]; then
 	echo "Good-bye!"
 elif [ $auto_tor_grab -eq 0 ]; then # manual run
-	#statements
 	echo "Getting torrents list ..."
 	torrents=$($qbt torrent list --format json $qbt_default_access 2>/dev/null)
 
@@ -210,8 +209,10 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 			while read -r single_found; do
 				tor_name_array+=("$single_found")
 				hash=$(echo "$torrents" | jq --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .hash')
+				#hash=$(echo "$torrents" | jq --raw-output --arg tosearch "$single_found" '.[] | select(.name|test("\($tosearch).";"i")) .hash')
 				tor_hash_array+=("$hash")
 				tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
+				#tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash|test("\($tosearch).";"i")) .magnet_uri')
 				tor_trackers_array+=("$tor_trackers_list")
 			done <<< "$torrent_name_list"
 		fi
@@ -253,18 +254,33 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		echo "No torrents found, exiting"
 	fi
 else # auto_tor_grab active, so radarr or sonarr
+	#secs=$((5 * 60))
+	secs=10
+	echo "I'll wait $secs to be sure ..."
+	while [ $secs -gt 0 ]; do
+		echo -ne "$secs\033[0K\r"
+		sleep 1
+		: $((secs--))
+	done
+
+	echo "Getting torrents list ..."
+	torrents=$($qbt torrent list --format json $qbt_default_access 2>/dev/null)
+
 	if [ -n "$sonarr_download_id" ]; then
 		echo "Auto torrent mode, Sonarr download"
 		hash=$sonarr_download_id
+		echo "hash -> $hash"
 	else
 		echo "Auto torrent mode, Radarr download"
 		hash=$radarr_download_id
+		echo "hash -> $hash"
 	fi
 
 	if [ -n "$private_tracker_list" ]; then #private tracker list present, need some more check
 		echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
 		tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
-		
+		#tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash|test("\($tosearch).";"i")) .magnet_uri')
+
 		for j in ${private_tracker_list//,/ }; do
 			if [[ "$tor_trackers_list" =~ ${j,,} ]];then
 				echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
