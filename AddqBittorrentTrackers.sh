@@ -146,7 +146,6 @@ generate_trackers_list () {
 if [ "$1" == "--force" ]; then
 	applytheforce=1
 	shift
-	#continue
 fi
 
 if [ -n "$sonarr_download_id" ] || [ -n "$radarr_download_id" ]; then
@@ -209,10 +208,8 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 			while read -r single_found; do
 				tor_name_array+=("$single_found")
 				hash=$(echo "$torrents" | jq --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .hash')
-				#hash=$(echo "$torrents" | jq --raw-output --arg tosearch "$single_found" '.[] | select(.name|test("\($tosearch).";"i")) .hash')
 				tor_hash_array+=("$hash")
 				tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
-				#tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash|test("\($tosearch).";"i")) .magnet_uri')
 				tor_trackers_array+=("$tor_trackers_list")
 			done <<< "$torrent_name_list"
 		fi
@@ -254,7 +251,6 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		echo "No torrents found, exiting"
 	fi
 else # auto_tor_grab active, so radarr or sonarr
-	#secs=$((5 * 60))
 	secs=10
 	echo "I'll wait $secs to be sure ..."
 	while [ $secs -gt 0 ]; do
@@ -279,7 +275,6 @@ else # auto_tor_grab active, so radarr or sonarr
 	if [ -n "$private_tracker_list" ]; then #private tracker list present, need some more check
 		echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
 		tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
-		#tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash|test("\($tosearch).";"i")) .magnet_uri')
 
 		for j in ${private_tracker_list//,/ }; do
 			if [[ "$tor_trackers_list" =~ ${j,,} ]];then

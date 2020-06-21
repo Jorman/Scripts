@@ -146,7 +146,6 @@ generate_trackers_list () {
 if [ "$1" == "--force" ]; then
   applytheforce=1
   shift
-  #continue
 fi
 
 if [ -n "$sonarr_download_id" ] || [ -n "$radarr_download_id" ]; then
