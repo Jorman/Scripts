@@ -2,7 +2,9 @@
 Make some good expalation on how to use these scripts
 
 # AddqBittorrentTrackers.sh
-In order to use this script you'll need:
+The purpose of this script is to inject trakers inside qBittorrent torrent, this can be used manually and can also works with Radarr/Sonarr in an automatic way.
+
+To use this script you'll need:
 [qbittorrent-cli](https://github.com/fedarovich/qbittorrent-cli)
 
 * First make sure your Radarr/Sonarr user can execute the script with some like this:
@@ -24,6 +26,8 @@ Now, when Radarr and/or Sonarr will grab a new torrent, the script will be trigg
 Is also possible to run the script manually, simply run the script `./AddqBittorrentTrackers.sh` and see all the possible options.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # AddTransmissionTrackers.sh
+The purpose of this script is to inject trakers inside Transmission torrent, this can be used manually and can also works with Radarr/Sonarr in an automatic way.
+
 This script use transmission-remote, normally this is already installed if you use transmission.
 
 * First make sure your Radarr/Sonarr user can execute the script with some like this:
@@ -43,4 +47,27 @@ This script use transmission-remote, normally this is already installed if you u
 
 Now, when Radarr and/or Sonarr will grab a new torrent, the script will be triggered and a custom tracker list will be added to the torrent, automatically, if the torrent is not from a private tracker.
 Is also possible to run the script manually, simply run the script `./AddTransmissionTrackers.sh` and see all the possible options.
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# TransmissionRemoveCompleteTorrent.sh
+The purpose of this script is to remove the complete torrent from Transmission, but only the torrent added by Radarr/Sonarr. The best way is to use it is to cronize it.
+
+This script use transmission-remote, normally this is already installed if you use transmission.
+
+* First make sure your Radarr/Sonarr user can execute the script with some like this:
+	`chown USER:USER TransmissionRemoveCompleteTorrent.sh` then be sue that is executable
+	`chmod +x TransmissionRemoveCompleteTorrent.sh`
+* Modify the `########## CONFIGURATIONS ##########` section:
+	`t_username`, `t_password`, `t_host` and `t_port` are all Transmission related.
+	`t_log` is to enable the logfile, if 1 the logfile will be write on `t_log_path`.
+	Now the most important setting `automatic_folder`, is the folder that contain all the **automatic download**
+	I use this folder structure for automatic download that came from Radarr/Sonarr:
+	- download
+	  - automatic
+	    - movie
+	    - tv_show
+	So for this configuration example I've to set `automatic` for `automatic_folder` option.
+	`max_days_seed` if the maximum seed time
+	`remove_normal` pay attention if you set this to true, because this enable a kind of **force** option that also check all non automatic download
+* Like I said, you can cronize the script, sith some like this
+	`30 01 * * * /PATHOFTHESCRIPT/TransmissionRemoveCompleteTorrent.sh >/dev/null 2>&1` this execute the script at 01:30 every day.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
