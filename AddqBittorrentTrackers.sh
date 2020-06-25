@@ -190,7 +190,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		tor_to_search="$1"
 		[ "$tor_to_search" = "." ] && tor_to_search="\d"
 
-		torrent_name_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$tor_to_search" '.[] | select(.name|test("\($tosearch).";"i")) .name')
+		torrent_name_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$tor_to_search" '.[] | select(.name|test("\($tosearch)";"i")) .name')
 
 		if [ -n "$torrent_name_list" ]; then # not empty
 			torrent_name_check=1
