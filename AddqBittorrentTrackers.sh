@@ -5,9 +5,9 @@
 username="admin"
 password="adminadmin"
 # Host on which qBittorrent runs
-host=http://localhost
+host="http://localhost"
 # Port
-port=8081
+port="8081"
 # Configure here your private trackers
 private_tracker_list='jumbohostpro,connecting,torrentbytes,shareisland,hdtorrents,girotorrent,bigtower,arabafenice,alpharatio,netcosmo,torrentleech,tleechreload,milkie'
 # Configure here your trackers list
@@ -105,6 +105,25 @@ inject_trackers () {
 		if [ -n "$tracker" ]; then
 			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
 			$qbt torrent tracker add $1 $tracker $qbt_default_access
+			if [ $? -eq 0 ]; then
+				echo -e " -> \e[32mSuccess! "
+			else
+				echo -e " - \e[31m< Failed > "
+			fi
+		fi
+		start=$((start+1))
+	done <<< "$tracker_list"
+	echo "Done!"
+}
+
+inject_trackers_curl () {
+	start=1
+	while read tracker; do
+		if [ -n "$tracker" ]; then
+			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
+			# curl --request POST 'http://localhost:8081/api/v2/torrents/addTrackers' --data "hash=bfdf1e09ae8b811b21bad2e531a985c92293424a" --data "urls=http://192.168.0.1/announce"
+			curl --request POST "${host}:${port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
+
 			if [ $? -eq 0 ]; then
 				echo -e " -> \e[32mSuccess! "
 			else
@@ -235,7 +254,8 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 				if [ $private_check -eq 0 ]; then
 					echo -e "\e[0m\e[33mThe torrent is not private, I'll inject trackers on it\e[0m"
 					generate_trackers_list
-					inject_trackers ${tor_hash_array[$i]}
+					# inject_trackers ${tor_hash_array[$i]}
+					inject_trackers_curl ${tor_hash_array[$i]}
 				fi
 			else
 				if [ $applytheforce -eq 1 ]; then
@@ -244,7 +264,8 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 					echo -e "\e[0m\e[33mPrivate tracker list not present, proceding like usual\e[0m"
 				fi
 				generate_trackers_list
-				inject_trackers ${tor_hash_array[$i]}
+				# inject_trackers ${tor_hash_array[$i]}
+				inject_trackers_curl ${tor_hash_array[$i]}
 			fi
 		done
 	else
@@ -287,5 +308,6 @@ else # auto_tor_grab active, so radarr or sonarr
 		echo -e "\e[0m\e[33mPrivate tracker list not present, proceding like usual\e[0m"
 	fi
 	generate_trackers_list
-	inject_trackers $hash
+	# inject_trackers $hash
+	inject_trackers_curl $hash
 fi
