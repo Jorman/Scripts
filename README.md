@@ -3,9 +3,14 @@ Make some good expalation on how to use these scripts
 
 # AddqBittorrentTrackers.sh
 The purpose of this script is to inject trakers inside qBittorrent torrent, this can be used manually and can also works with Radarr/Sonarr in an automatic way.
+Actually this works with qBittorrent v4.1+ because of API. Maybe works with lower version, must be checked. Let me know if works, so I can expand the version compability.
 
 To use this script you'll need:
-[qbittorrent-cli](https://github.com/fedarovich/qbittorrent-cli)
+* ~~[qbittorrent-cli](https://github.com/fedarovich/qbittorrent-cli)~~ -> No more needed, now with curl is really fast!!!
+* [jq](https://stedolan.github.io/jq/)
+  Check if is available for your distro with `sudo apt install jq`
+* Curl
+  Install it with `sudo apt install curl`
 
 * First make sure your Radarr/Sonarr user can execute the script with some like this:
 	`chown USER:USER AddqBittorrentTrackers.sh` then be sue that is executable

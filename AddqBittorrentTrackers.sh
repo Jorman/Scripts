@@ -15,15 +15,30 @@ live_trackers_list_url='https://newtrackon.com/api/stable'
 ########## CONFIGURATIONS ##########
 
 trackers_list_file=~/TorrentTrackersList
-qbt="$(command -v qbt)"
-qbt_default_access="--username $username --password $password --url $host:$port"
+qbt_executable="$(command -v qbt)"
+jq_executable="$(command -v jq)"
+curl_executable="$(command -v curl)"
+qbt_default_access="--username $username --password $password --url ${host}:${port}"
 auto_tor_grab=0
 test_in_progress=0
 applytheforce=0
 
-if [[ -z $qbt ]]; then
+if [[ -z $qbt_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on qBittorrent-cli. Aborting.\n\e[0m"
 	echo "You can find it here: https://github.com/fedarovich/qbittorrent-cli"
+	exit 1
+fi
+
+if [[ -z $jq_executable ]]; then
+	echo -e "\n\e[0;91;1mFail on jq. Aborting.\n\e[0m"
+	echo "You can find it here: https://stedolan.github.io/jq/"
+	echo "Or you can install it with -> sudo apt install jq"
+	exit 1
+fi
+
+if [[ -z $curl_executable ]]; then
+	echo -e "\n\e[0;91;1mFail on curl. Aborting.\n\e[0m"
+	echo "You can install it with -> sudo apt install curl"
 	exit 1
 fi
 
@@ -104,25 +119,7 @@ inject_trackers () {
 	while read tracker; do
 		if [ -n "$tracker" ]; then
 			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
-			$qbt torrent tracker add $1 $tracker $qbt_default_access
-			if [ $? -eq 0 ]; then
-				echo -e " -> \e[32mSuccess! "
-			else
-				echo -e " - \e[31m< Failed > "
-			fi
-		fi
-		start=$((start+1))
-	done <<< "$tracker_list"
-	echo "Done!"
-}
-
-inject_trackers_curl () {
-	start=1
-	while read tracker; do
-		if [ -n "$tracker" ]; then
-			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
-			# curl --request POST 'http://localhost:8081/api/v2/torrents/addTrackers' --data "hash=bfdf1e09ae8b811b21bad2e531a985c92293424a" --data "urls=http://192.168.0.1/announce"
-			curl --request POST "${host}:${port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
+			$curl_executable --request POST "${host}:${port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
 
 			if [ $? -eq 0 ]; then
 				echo -e " -> \e[32mSuccess! "
@@ -160,6 +157,11 @@ generate_trackers_list () {
 	tracker_list=$(cat "$trackers_list_file")
 	number_of_trackers_in_list=$(grep "" -c "$trackers_list_file")
 }
+
+get_torrent_list () {
+	echo "Getting torrents list ..."
+	torrents=$($curl_executable "${host}:${port}/api/v2/torrents/info" 2>/dev/null)
+}
 ########## FUNCTIONS ##########
 
 if [ "$1" == "--force" ]; then
@@ -186,8 +188,7 @@ fi
 if [ $test_in_progress -eq 1 ]; then
 	echo "Good-bye!"
 elif [ $auto_tor_grab -eq 0 ]; then # manual run
-	echo "Getting torrents list ..."
-	torrents=$($qbt torrent list --format json $qbt_default_access 2>/dev/null)
+	get_torrent_list
 
 	if [ $? -ne 0 ]; then
 		echo -e "\n\e[0;91;1mFail on qBittorrent. Aborting.\n\e[0m"
@@ -201,7 +202,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		echo -e "${0##*/} .\t\t- add trackers to all torrents"
 		echo -e "Names are case insensitive "
 		echo -e "\n\e[0;32;1mCurrent torrents:\e[0;32m"
-		echo "$torrents" | jq --raw-output '.[] .name'
+		echo "$torrents" | $jq_executable --raw-output '.[] .name'
 		exit 1
 	fi
 
@@ -209,7 +210,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		tor_to_search="$1"
 		[ "$tor_to_search" = "." ] && tor_to_search="\d"
 
-		torrent_name_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$tor_to_search" '.[] | select(.name|test("\($tosearch)";"i")) .name')
+		torrent_name_list=$(echo "$torrents" | $jq_executable --raw-output --arg tosearch "$tor_to_search" '.[] | select(.name|test("\($tosearch)";"i")) .name')
 
 		if [ -n "$torrent_name_list" ]; then # not empty
 			torrent_name_check=1
@@ -226,9 +227,9 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		else
 			while read -r single_found; do
 				tor_name_array+=("$single_found")
-				hash=$(echo "$torrents" | jq --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .hash')
+				hash=$(echo "$torrents" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .hash')
 				tor_hash_array+=("$hash")
-				tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
+				tor_trackers_list=$(echo "$torrents" | $jq_executable --raw-output --arg tosearch "$hash" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
 				tor_trackers_array+=("$tor_trackers_list")
 			done <<< "$torrent_name_list"
 		fi
@@ -254,8 +255,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 				if [ $private_check -eq 0 ]; then
 					echo -e "\e[0m\e[33mThe torrent is not private, I'll inject trackers on it\e[0m"
 					generate_trackers_list
-					# inject_trackers ${tor_hash_array[$i]}
-					inject_trackers_curl ${tor_hash_array[$i]}
+					inject_trackers ${tor_hash_array[$i]}
 				fi
 			else
 				if [ $applytheforce -eq 1 ]; then
@@ -264,8 +264,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 					echo -e "\e[0m\e[33mPrivate tracker list not present, proceding like usual\e[0m"
 				fi
 				generate_trackers_list
-				# inject_trackers ${tor_hash_array[$i]}
-				inject_trackers_curl ${tor_hash_array[$i]}
+				inject_trackers ${tor_hash_array[$i]}
 			fi
 		done
 	else
@@ -280,8 +279,7 @@ else # auto_tor_grab active, so radarr or sonarr
 		: $((secs--))
 	done
 
-	echo "Getting torrents list ..."
-	torrents=$($qbt torrent list --format json $qbt_default_access 2>/dev/null)
+	get_torrent_list
 
 	if [ -n "$sonarr_download_id" ]; then
 		echo "Auto torrent mode, Sonarr download"
@@ -295,7 +293,7 @@ else # auto_tor_grab active, so radarr or sonarr
 
 	if [ -n "$private_tracker_list" ]; then #private tracker list present, need some more check
 		echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
-		tor_trackers_list=$(echo "$torrents" | jq --raw-output --arg tosearch "$hash" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
+		tor_trackers_list=$(echo "$torrents" | $jq_executable --raw-output --arg tosearch "$hash" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
 
 		for j in ${private_tracker_list//,/ }; do
 			if [[ "$tor_trackers_list" =~ ${j,,} ]];then
@@ -308,6 +306,5 @@ else # auto_tor_grab active, so radarr or sonarr
 		echo -e "\e[0m\e[33mPrivate tracker list not present, proceding like usual\e[0m"
 	fi
 	generate_trackers_list
-	# inject_trackers $hash
-	inject_trackers_curl $hash
+	inject_trackers $hash
 fi
