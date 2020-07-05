@@ -96,6 +96,7 @@ http://peersteers.org:80/announce
 http://fxtt.ru:80/announce
 EOL
 fi
+  sed -i '/^$/d' "$trackers_list_file"
   echo "Downloading/Upgrading done."
 }
 
@@ -205,16 +206,21 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
     fi
 
     if [[ -n "$torrent_found" ]]; then
-      tor_name=$($transmission_remote $transmission_default_access -t $torrent_found -i | sed -nr 's/ *Name: ?(.*)/\1/p')
-      tor_hash=$($transmission_remote $transmission_default_access -t $torrent_found -i | sed -nr 's/ *Hash: ?(.*)/\1/p')
-      tor_trackers_list=$($transmission_remote $transmission_default_access -t $torrent_found -i | sed -nr 's/ *Magnet: ?(.*)/\1/p')
+      while read -r single_found; do
+        tor_name=$($transmission_remote $transmission_default_access -t $single_found -i | sed -nr 's/ *Name: ?(.*)/\1/p')
+        tor_hash=$($transmission_remote $transmission_default_access -t $single_found -i | sed -nr 's/ *Hash: ?(.*)/\1/p')
+        tor_trackers_list=$($transmission_remote $transmission_default_access -t $single_found -i | sed -nr 's/ *Magnet: ?(.*)/\1/p')
 
-      tor_name_array+=("$tor_name")
-      tor_hash_array+=("$tor_hash")
-      tor_trackers_array+=("$tor_trackers_list")
+        tor_name_array+=("$tor_name")
+        tor_hash_array+=("$tor_hash")
+        tor_trackers_array+=("$tor_trackers_list")
+      done <<< "$torrent_found"
 
       echo -e "\n\e[0;32;1mI found the following torrent:\e[0;32m"
-      echo "$tor_name"
+      for jj in "${!tor_name_array[@]}"; do
+        echo "${tor_name_array[$jj]}"
+      done
+
     else
       echo -e "\n\e[0;31;1mI didn't find a torrent with the text/number: \e[21m$1"
       echo -e "\e[0m"
