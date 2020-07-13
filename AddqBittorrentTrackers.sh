@@ -1,9 +1,6 @@
 #!/bin/bash
 
 ########## CONFIGURATIONS ##########
-# Access Information for qBittorrent
-username="admin"
-password="adminadmin"
 # Host on which qBittorrent runs
 host="http://localhost"
 # Port
@@ -15,19 +12,11 @@ live_trackers_list_url='https://newtrackon.com/api/stable'
 ########## CONFIGURATIONS ##########
 
 trackers_list_file=~/TorrentTrackersList
-qbt_executable="$(command -v qbt)"
 jq_executable="$(command -v jq)"
 curl_executable="$(command -v curl)"
-qbt_default_access="--username $username --password $password --url ${host}:${port}"
 auto_tor_grab=0
 test_in_progress=0
 applytheforce=0
-
-if [[ -z $qbt_executable ]]; then
-	echo -e "\n\e[0;91;1mFail on qBittorrent-cli. Aborting.\n\e[0m"
-	echo "You can find it here: https://github.com/fedarovich/qbittorrent-cli"
-	exit 1
-fi
 
 if [[ -z $jq_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on jq. Aborting.\n\e[0m"
@@ -45,7 +34,7 @@ fi
 ########## FUNCTIONS ##########
 tracker_list_upgrade () {
 	echo "Downloading/Upgrading traker list ..."
-	wget -O $trackers_list_file $live_trackers_list_url
+	wget -q -O $trackers_list_file $live_trackers_list_url
 	if [[ $? -ne 0 ]]; then
 		echo "I can't download the list, I'll use a static one"
 cat >"$trackers_list_file" <<'EOL'
