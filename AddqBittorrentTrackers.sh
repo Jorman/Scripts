@@ -2,9 +2,13 @@
 
 ########## CONFIGURATIONS ##########
 # Host on which qBittorrent runs
-host="http://localhost"
-# Port
-port="8081"
+qbt_host="http://localhost"
+# Port -> the same port that is inside qBittorrent option -> Web UI -> Web User Interface
+qbt_port="8081"
+# Username to access to Web UI
+qbt_username="admin"
+# Password to access to Web UI
+qbt_password="adminadmin"
 # Configure here your private trackers
 private_tracker_list='jumbohostpro,connecting,torrentbytes,shareisland,hdtorrents,girotorrent,bigtower,arabafenice,alpharatio,netcosmo,torrentleech,tleechreload,milkie'
 # Configure here your trackers list
@@ -108,7 +112,10 @@ inject_trackers () {
 	while read tracker; do
 		if [ -n "$tracker" ]; then
 			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
-			$curl_executable --request POST "${host}:${port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
+			#$curl_executable --request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
+			echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+					--cookie - \
+					--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
 
 			if [ $? -eq 0 ]; then
 				echo -e " -> \e[32mSuccess! "
@@ -148,8 +155,22 @@ generate_trackers_list () {
 }
 
 get_torrent_list () {
+	get_cookie
 	echo "Getting torrents list ..."
-	torrents=$($curl_executable "${host}:${port}/api/v2/torrents/info" 2>/dev/null)
+	#torrents=$($curl_executable "${qbt_host}:${qbt_port}/api/v2/torrents/info" 2>/dev/null)
+	torrents=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		--cookie - \
+		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/info")
+	echo "done"
+}
+
+get_cookie () {
+	echo "Getting cookie ..."
+	qbt_cookie=$($curl_executable --silent --fail --show-error \
+		--header "Referer: ${qbt_host}:${qbt_port}" \
+		--cookie-jar - \
+		--request GET "${qbt_host}:${qbt_port}/api/v2/auth/login?username=$qbt_username&password=$qbt_password")
+    echo "done"
 }
 ########## FUNCTIONS ##########
 
