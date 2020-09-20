@@ -13,12 +13,17 @@ To use this script you'll need:
   Install it with `sudo apt install curl`
 
 * First make sure your Radarr/Sonarr user can execute the script with some like this:
-	`chown USER:USER AddqBittorrentTrackers.sh` then be sue that is executable
+	`chown USER:GROUP AddqBittorrentTrackers.sh` then be sure that is executable
 	`chmod +x AddqBittorrentTrackers.sh`
+	where `USER:GROUP` is the user and group of Radarr/Sonarr
 * Modify the `########## CONFIGURATIONS ##########` section:
-	`username`, `password`, `host` and `port` are all qBittorrent related.
+	`qbt_username` -> username to access to qBittorrent Web UI
+	`qbt_password` -> username to access to qBittorrent Web UI
+	Note that if the script run on the same device that hold qBittorrent, you can set `Bypass authentication for clients on localhost` so when the script run username and password are not required
+	`qbt_host` -> if the script is on the same device of qBittorrent `http://localhost`, otherwise, you've to set to the remote device
+	`qbt_port` -> is the Web UI port
 	`private_tracker_list` is a comma-separated list of your "private" trackers.
-	Actually you've to manually set your private trackers list because is not yet possible get the status from the torrent automatically, maybe one day "qbt" will make it for you.
+	Actually you've to manually set your private trackers list because is not yet possible get the status from the torrent automatically, maybe one day it will be possible.
 	`live_trackers_list_url`, is the url where the trackers list are taken, is an automatic list.
 * Now the configuration is done, you've to configure Radarr and/or Sonarr, personally I:
 1. Create a custom script (settings -> connect -> add notification -> Custom Script)
