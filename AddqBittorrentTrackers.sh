@@ -38,7 +38,7 @@ fi
 ########## FUNCTIONS ##########
 tracker_list_upgrade () {
 	echo "Downloading/Upgrading traker list ..."
-	wget -q -O $trackers_list_file $live_trackers_list_url
+	$curl_executable -s -o $trackers_list_file $live_trackers_list_url
 	if [[ $? -ne 0 ]]; then
 		echo "I can't download the list, I'll use a static one"
 cat >"$trackers_list_file" <<'EOL'
@@ -172,6 +172,17 @@ get_cookie () {
 		--request GET "${qbt_host}:${qbt_port}/api/v2/auth/login?username=$qbt_username&password=$qbt_password")
     echo "done"
 }
+
+hash_check() {
+	case $1 in
+		( *[!0-9A-Fa-f]* | "" ) return 1 ;;
+		( * )
+			case ${#1} in
+				( 32 | 40 ) return 0 ;;
+				( * )       return 1 ;;
+			esac
+	esac
+}
 ########## FUNCTIONS ##########
 
 if [ "$1" == "--force" ]; then
@@ -183,10 +194,19 @@ if [ -n "$sonarr_download_id" ] || [ -n "$radarr_download_id" ]; then
 	if [[ -n "$sonarr_download_id" ]]; then
 		echo "Sonarr varialbe found -> $sonarr_download_id"
 		sonarr_download_id=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
+		global_hash='$sonarr_download_id'
 	else
 		echo "Radarr varialbe found -> $radarr_download_id"
 		radarr_download_id=$(echo "$radarr_download_id" | awk '{print tolower($0)}')
+		global_hash='$radarr_download_id'
 	fi
+
+	hash_check $global_hash
+	if [[ $? -ne 0 ]]; then
+		echo "The download is not for a torrent client, I'll exit"
+		exit
+	fi
+
 	auto_tor_grab="1"
 fi
 
