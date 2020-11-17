@@ -21,6 +21,7 @@ curl_executable="$(command -v curl)"
 auto_tor_grab=0
 test_in_progress=0
 applytheforce=0
+seconds_to_wait=10
 
 if [[ -z $jq_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on jq. Aborting.\n\e[0m"
@@ -185,21 +186,28 @@ hash_check() {
 }
 ########## FUNCTIONS ##########
 
+echo "I'll wait $seconds_to_wait to be sure ..."
+while [ $seconds_to_wait -gt 0 ]; do
+	echo -ne "$seconds_to_wait\033[0K\r"
+	sleep 1
+	: $((seconds_to_wait--))
+done
+	
 if [ "$1" == "--force" ]; then
 	applytheforce=1
 	shift
 fi
 
-if [ -n "$sonarr_download_id" ] || [ -n "$radarr_download_id" ]; then
-	if [[ -n "$sonarr_download_id" ]]; then
+if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]]; then
+	if [[ -n "${sonarr_download_id}" ]]; then
 		echo "Sonarr varialbe found -> $sonarr_download_id"
-		global_hash='$sonarr_download_id'
+		hash="${sonarr_download_id}"
 	else
 		echo "Radarr varialbe found -> $radarr_download_id"
-		global_hash='$radarr_download_id'
+		hash="${radarr_download_id}"
 	fi
 
-	hash_check ${!global_hash}
+	hash_check "${hash}"
 	if [[ $? -ne 0 ]]; then
 		echo "The download is not for a torrent client, I'll exit"
 		exit
@@ -299,25 +307,15 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		echo "No torrents found, exiting"
 	fi
 else # auto_tor_grab active, so radarr or sonarr
-	secs=10
-	echo "I'll wait $secs to be sure ..."
-	while [ $secs -gt 0 ]; do
-		echo -ne "$secs\033[0K\r"
+
+	echo "I'll wait $seconds_to_wait to be sure ..."
+	while [ $seconds_to_wait -gt 0 ]; do
+		echo -ne "$seconds_to_wait\033[0K\r"
 		sleep 1
-		: $((secs--))
+		: $((seconds_to_wait--))
 	done
 
 	get_torrent_list
-
-	if [ -n "$sonarr_download_id" ]; then
-		echo "Auto torrent mode, Sonarr download"
-		hash=$sonarr_download_id
-		echo "hash -> $hash"
-	else
-		echo "Auto torrent mode, Radarr download"
-		hash=$radarr_download_id
-		echo "hash -> $hash"
-	fi
 
 	if [ -n "$private_tracker_list" ]; then #private tracker list present, need some more check
 		echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"
