@@ -21,7 +21,6 @@ curl_executable="$(command -v curl)"
 auto_tor_grab=0
 test_in_progress=0
 applytheforce=0
-seconds_to_wait=10
 
 if [[ -z $jq_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on jq. Aborting.\n\e[0m"
@@ -38,7 +37,7 @@ fi
 
 ########## FUNCTIONS ##########
 tracker_list_upgrade () {
-	echo "Downloading/Upgrading traker list ..."
+	echo "Downloading/Upgrading tracker list ..."
 	$curl_executable -s -o $trackers_list_file $live_trackers_list_url
 	if [[ $? -ne 0 ]]; then
 		echo "I can't download the list, I'll use a static one"
@@ -184,21 +183,24 @@ hash_check() {
 			esac
 	esac
 }
+
+wait() {
+	echo "I'll wait $1 to be sure ..."
+	while [ $1 -gt 0 ]; do
+		echo -ne "$1\033[0K\r"
+		sleep 1
+		: $((1--))
+	done
+}
 ########## FUNCTIONS ##########
 
-echo "I'll wait $seconds_to_wait to be sure ..."
-while [ $seconds_to_wait -gt 0 ]; do
-	echo -ne "$seconds_to_wait\033[0K\r"
-	sleep 1
-	: $((seconds_to_wait--))
-done
-	
 if [ "$1" == "--force" ]; then
 	applytheforce=1
 	shift
 fi
 
 if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]]; then
+	wait 5
 	if [[ -n "${sonarr_download_id}" ]]; then
 		echo "Sonarr varialbe found -> $sonarr_download_id"
 		hash="${sonarr_download_id}"
@@ -307,14 +309,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		echo "No torrents found, exiting"
 	fi
 else # auto_tor_grab active, so radarr or sonarr
-
-	echo "I'll wait $seconds_to_wait to be sure ..."
-	while [ $seconds_to_wait -gt 0 ]; do
-		echo -ne "$seconds_to_wait\033[0K\r"
-		sleep 1
-		: $((seconds_to_wait--))
-	done
-
+	wait 5
 	get_torrent_list
 
 	if [ -n "$private_tracker_list" ]; then #private tracker list present, need some more check
