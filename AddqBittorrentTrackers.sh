@@ -21,6 +21,7 @@ curl_executable="$(command -v curl)"
 auto_tor_grab=0
 test_in_progress=0
 applytheforce=0
+first_run=0
 
 if [[ -z $jq_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on jq. Aborting.\n\e[0m"
@@ -108,11 +109,12 @@ EOL
 }
 
 inject_trackers () {
+	get_cookie
 	start=1
 	while read tracker; do
 		if [ -n "$tracker" ]; then
 			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
-			#$curl_executable --request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
+			# $curl_executable --request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
 			echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 					--cookie - \
 					--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
@@ -152,6 +154,7 @@ generate_trackers_list () {
 
 	tracker_list=$(cat "$trackers_list_file")
 	number_of_trackers_in_list=$(grep "" -c "$trackers_list_file")
+	first_run=1
 }
 
 get_torrent_list () {
@@ -169,8 +172,8 @@ get_cookie () {
 	qbt_cookie=$($curl_executable --silent --fail --show-error \
 		--header "Referer: ${qbt_host}:${qbt_port}" \
 		--cookie-jar - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/auth/login?username=$qbt_username&password=$qbt_password")
-    echo "done"
+		--request GET "${qbt_host}:${qbt_port}/api/v2/auth/login?username=${qbt_username}&password=${qbt_password}")
+	echo "done"
 }
 
 hash_check() {
@@ -185,11 +188,12 @@ hash_check() {
 }
 
 wait() {
-	echo "I'll wait $1 to be sure ..."
-	while [ $1 -gt 0 ]; do
-		echo -ne "$1\033[0K\r"
+	i=$1
+	echo "I'll wait $i to be sure ..."
+	while [ $i -gt 0 ]; do
+		echo -ne "$i\033[0K\r"
 		sleep 1
-		: $((1--))
+		i=$((i-1))
 	done
 }
 ########## FUNCTIONS ##########
@@ -292,7 +296,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 
 				if [ $private_check -eq 0 ]; then
 					echo -e "\e[0m\e[33mThe torrent is not private, I'll inject trackers on it\e[0m"
-					generate_trackers_list
+					[[ $first_run -eq 0 ]] && generate_trackers_list
 					inject_trackers ${tor_hash_array[$i]}
 				fi
 			else
@@ -301,7 +305,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 				else
 					echo -e "\e[0m\e[33mPrivate tracker list not present, proceding like usual\e[0m"
 				fi
-				generate_trackers_list
+				[[ $first_run -eq 0 ]] && generate_trackers_list
 				inject_trackers ${tor_hash_array[$i]}
 			fi
 		done
@@ -326,6 +330,6 @@ else # auto_tor_grab active, so radarr or sonarr
 	else
 		echo -e "\e[0m\e[33mPrivate tracker list not present, proceding like usual\e[0m"
 	fi
-	generate_trackers_list
+	[[ $first_run -eq 0 ]] && generate_trackers_list
 	inject_trackers $hash
 fi
