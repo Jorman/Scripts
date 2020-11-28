@@ -114,7 +114,6 @@ inject_trackers () {
 	while read tracker; do
 		if [ -n "$tracker" ]; then
 			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
-			# $curl_executable --request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
 			echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 					--cookie - \
 					--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
@@ -160,7 +159,6 @@ generate_trackers_list () {
 get_torrent_list () {
 	get_cookie
 	echo "Getting torrents list ..."
-	#torrents=$($curl_executable "${qbt_host}:${qbt_port}/api/v2/torrents/info" 2>/dev/null)
 	torrents=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 		--cookie - \
 		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/info")
@@ -207,10 +205,10 @@ if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]]; then
 	wait 5
 	if [[ -n "${sonarr_download_id}" ]]; then
 		echo "Sonarr varialbe found -> $sonarr_download_id"
-		hash="${sonarr_download_id}"
+		hash=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
 	else
 		echo "Radarr varialbe found -> $radarr_download_id"
-		hash="${radarr_download_id}"
+		hash=$(echo "$radarr_download_id" | awk '{print tolower($0)}')
 	fi
 
 	hash_check "${hash}"
