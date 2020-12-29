@@ -201,14 +201,21 @@ if [ "$1" == "--force" ]; then
 	shift
 fi
 
-if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]]; then
+if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n "${lidarr_download_id}" ]]; then
 	wait 5
 	if [[ -n "${sonarr_download_id}" ]]; then
 		echo "Sonarr varialbe found -> $sonarr_download_id"
 		hash=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
-	else
+	fi
+
+	if [[ -n "${radarr_download_id}" ]]; then
 		echo "Radarr varialbe found -> $radarr_download_id"
 		hash=$(echo "$radarr_download_id" | awk '{print tolower($0)}')
+	fi
+
+	if [[ -n "${lidarr_download_id}" ]]; then
+		echo "Lidarr varialbe found -> $lidarr_download_id"
+		hash=$(echo "$lidarr_download_id" | awk '{print tolower($0)}')
 	fi
 
 	hash_check "${hash}"
@@ -216,11 +223,10 @@ if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]]; then
 		echo "The download is not for a torrent client, I'll exit"
 		exit
 	fi
-
 	auto_tor_grab="1"
 fi
 
-if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]]; then
+if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]] || [[ $lidarr_eventtype == "Test" ]]; then
 	echo "Test in progress, all ok"
 	test_in_progress=1
 fi
