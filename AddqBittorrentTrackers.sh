@@ -15,7 +15,12 @@ private_tracker_list='jumbohostpro,connecting,torrentbytes,shareisland,hdtorrent
 live_trackers_list_url='https://newtrackon.com/api/stable'
 ########## CONFIGURATIONS ##########
 
-trackers_list_file=~/TorrentTrackersList
+if >> "$HOME/TorrentTrackersList" > /dev/null; then
+	trackers_list_file="$HOME/TorrentTrackersList"
+else
+	trackers_list_file="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+fi
+
 jq_executable="$(command -v jq)"
 curl_executable="$(command -v curl)"
 auto_tor_grab=0
@@ -39,7 +44,7 @@ fi
 ########## FUNCTIONS ##########
 tracker_list_upgrade () {
 	echo "Downloading/Upgrading tracker list ..."
-	$curl_executable -s -o $trackers_list_file $live_trackers_list_url
+	$curl_executable -s -o "$trackers_list_file" $live_trackers_list_url
 	if [[ $? -ne 0 ]]; then
 		echo "I can't download the list, I'll use a static one"
 cat >"$trackers_list_file" <<'EOL'
