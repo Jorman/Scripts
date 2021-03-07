@@ -9,16 +9,18 @@ qbt_port="8081"
 qbt_username="admin"
 # Password to access to Web UI
 qbt_password="adminadmin"
+# Custom path have to be used when you want to save the TorrentTrackersList to a different location. A good example is when you're using this script with docker
+custom_save_path=""
 # Configure here your private trackers
 private_tracker_list='jumbohostpro,connecting,torrentbytes,shareisland,hdtorrents,girotorrent,bigtower,arabafenice,alpharatio,netcosmo,torrentleech,tleechreload,milkie'
 # Configure here your trackers list
 live_trackers_list_url='https://newtrackon.com/api/stable'
 ########## CONFIGURATIONS ##########
 
-if >> "$HOME/TorrentTrackersList" > /dev/null; then
-	trackers_list_file="$HOME/TorrentTrackersList"
+if [[ -z $custom_save_path ]]; then
+	trackers_list_file="${HOME}/TorrentTrackersList"
 else
-	trackers_list_file="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+	trackers_list_file="${custom_save_path}/TorrentTrackersList"
 fi
 
 jq_executable="$(command -v jq)"
