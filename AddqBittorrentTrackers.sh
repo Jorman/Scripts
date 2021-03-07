@@ -23,6 +23,15 @@ else
 	trackers_list_file="${custom_save_path}/TorrentTrackersList"
 fi
 
+if >> "${trackers_list_file}" > /dev/null; then
+	rm -rf "${trackers_list_file}"
+else
+	echo -e "\n\e[0;91;1mError accessing tracker file list. Aborting.\n\e[0m"
+	echo "I'm unable to write to ${trackers_list_file}"
+	echo "Please check your configuration"
+	exit 1
+fi
+
 jq_executable="$(command -v jq)"
 curl_executable="$(command -v curl)"
 auto_tor_grab=0
