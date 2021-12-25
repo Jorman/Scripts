@@ -68,6 +68,7 @@ tracker_list_upgrade () {
 	echo "Downloading/Upgrading tracker list ..."
 	for j in "${live_trackers_list_urls[@]}"; do
 		$curl_executable -sS $j >> "${trackers_list_file}"
+		echo "" >> "${trackers_list_file}"
 	done
 	if [[ $? -ne 0 ]]; then
 		echo "I can't download the list, I'll use a static one"
