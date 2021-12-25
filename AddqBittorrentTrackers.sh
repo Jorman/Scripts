@@ -60,13 +60,17 @@ fi
 
 ########## FUNCTIONS ##########
 tracker_list_upgrade () {
+	if [[ -e ${trackers_list_file} ]]; then
+		echo "removing old ${trackers_list_file} ... done"
+		rm -rf "${trackers_list_file}"
+	fi
 	echo "Downloading/Upgrading tracker list ..."
 	for j in "${live_trackers_list_urls[@]}"; do
-		$curl_executable -sS $j >> "$trackers_list_file"
+		$curl_executable -sS $j >> "${trackers_list_file}"
 	done
 	if [[ $? -ne 0 ]]; then
 		echo "I can't download the list, I'll use a static one"
-cat >"$trackers_list_file" <<'EOL'
+cat >"${trackers_list_file}" <<'EOL'
 udp://tracker.coppersurfer.tk:6969/announce
 http://tracker.internetwarriors.net:1337/announce
 udp://tracker.internetwarriors.net:1337/announce
@@ -128,7 +132,7 @@ http://peersteers.org:80/announce
 http://fxtt.ru:80/announce
 EOL
 	fi
-	sed -i '/^$/d' "$trackers_list_file"
+	sed -i '/^$/d' "${trackers_list_file}"
 	echo "Downloading/Upgrading done."
 }
 
@@ -154,19 +158,19 @@ inject_trackers () {
 }
 
 generate_trackers_list () {
-	if [[ -s $trackers_list_file ]]; then # the file exist and is not empty?
+	if [[ -s ${trackers_list_file} ]]; then # the file exist and is not empty?
 		echo "Tracker file exist, I'll check if I need to upgrade it"
 		days="1"
 
 		# collect both times in seconds-since-the-epoch
 		days_ago=$(date -d "now -$days days" +%s)
-		file_time=$(date -r "$trackers_list_file" +%s)
+		file_time=$(date -r "${trackers_list_file}" +%s)
 
 		if (( $file_time <= $days_ago )); then
-			echo "File $trackers_list_file exists and is older than $days day, I'll upgrade it"
+			echo "File ${trackers_list_file} exists and is older than $days day, I'll upgrade it"
 			tracker_list_upgrade
 		else
-			echo "File $trackers_list_file is not older than $days days and I don't need to upgrade it"
+			echo "File ${trackers_list_file} is not older than $days days and I don't need to upgrade it"
 		fi
 
 	else # file don't exist I've to download it
@@ -174,8 +178,8 @@ generate_trackers_list () {
 		tracker_list_upgrade
 	fi
 
-	tracker_list=$(cat "$trackers_list_file")
-	number_of_trackers_in_list=$(grep "" -c "$trackers_list_file")
+	tracker_list=$(cat "${trackers_list_file}")
+	number_of_trackers_in_list=$(grep "" -c "${trackers_list_file}")
 	first_run=1
 }
 
