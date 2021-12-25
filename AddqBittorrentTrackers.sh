@@ -14,7 +14,11 @@ custom_save_path=""
 # Configure here your private trackers
 private_tracker_list='jumbohostpro,connecting,torrentbytes,shareisland,hdtorrents,girotorrent,bigtower,arabafenice,alpharatio,netcosmo,torrentleech,tleechreload,milkie'
 # Configure here your trackers list
-live_trackers_list_url='https://newtrackon.com/api/stable'
+declare -a live_trackers_list_urls=(
+									"https://newtrackon.com/api/stable"
+									"https://trackerslist.com/best.txt"
+									"https://trackerslist.com/http.txt"
+                				)
 ########## CONFIGURATIONS ##########
 
 if [[ -z $custom_save_path ]]; then
@@ -23,13 +27,15 @@ else
 	trackers_list_file="${custom_save_path}/TorrentTrackersList"
 fi
 
-if >> "${trackers_list_file}" > /dev/null; then
-	rm -rf "${trackers_list_file}"
-else
-	echo -e "\n\e[0;91;1mError accessing tracker file list. Aborting.\n\e[0m"
-	echo "I'm unable to write to ${trackers_list_file}"
-	echo "Please check your configuration"
-	exit 1
+if [[ -e $trackers_list_file ]]; then
+	if [[ -w $trackers_list_file ]]; then
+		echo "${trackers_list_file} is ok and writable"
+	else
+		echo -e "\n\e[0;91;1mError accessing tracker file list. Aborting.\n\e[0m"
+		echo "I'm unable to write to ${trackers_list_file}"
+		echo "Please check your configuration"
+		exit 1
+	fi
 fi
 
 jq_executable="$(command -v jq)"
@@ -55,7 +61,9 @@ fi
 ########## FUNCTIONS ##########
 tracker_list_upgrade () {
 	echo "Downloading/Upgrading tracker list ..."
-	$curl_executable -s -o "$trackers_list_file" $live_trackers_list_url
+	for j in "${live_trackers_list_urls[@]}"; do
+		$curl_executable -sS $j >> "$trackers_list_file"
+	done
 	if [[ $? -ne 0 ]]; then
 		echo "I can't download the list, I'll use a static one"
 cat >"$trackers_list_file" <<'EOL'
@@ -146,9 +154,8 @@ inject_trackers () {
 }
 
 generate_trackers_list () {
-	if [[ -s "$trackers_list_file" ]]; then # the file exist and is not empty?
+	if [[ -s $trackers_list_file ]]; then # the file exist and is not empty?
 		echo "Tracker file exist, I'll check if I need to upgrade it"
-
 		days="1"
 
 		# collect both times in seconds-since-the-epoch
