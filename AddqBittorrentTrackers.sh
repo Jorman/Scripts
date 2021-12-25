@@ -18,6 +18,7 @@ declare -a live_trackers_list_urls=(
 									"https://newtrackon.com/api/stable"
 									"https://trackerslist.com/best.txt"
 									"https://trackerslist.com/http.txt"
+									"https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
                 				)
 ########## CONFIGURATIONS ##########
 
@@ -134,6 +135,11 @@ EOL
 	fi
 	sed -i '/^$/d' "${trackers_list_file}"
 	echo "Downloading/Upgrading done."
+	echo "Checking for duplicates..."
+	mv "${trackers_list_file}" "${trackers_list_file}.raw"
+	awk '!seen[$0]++' "${trackers_list_file}.raw" > "${trackers_list_file}"
+	rm -rf "${trackers_list_file}.raw"
+	echo "done"
 }
 
 inject_trackers () {
