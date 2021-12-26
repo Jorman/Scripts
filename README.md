@@ -1,5 +1,5 @@
 # TODO
-Make some good expalation on how to use these scripts
+Make some good expalation on how to use these scripts!
 
 # AddqBittorrentTrackers.sh
 The purpose of this script is to inject trakers inside qBittorrent torrent, this can be used manually and can also works with Radarr/Sonarr in an automatic way.
