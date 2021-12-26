@@ -25,7 +25,8 @@ To use this script you'll need:
 	`custom_save_path` -> the script have to save a file with tracker list, normally that file is saved in user home path, however if the home directory is not writable (not exist or whatever), the script fail. So if the home of the user that run the script is not reachable, this option is the right one. This option can be useful when used in combination with containers, so if the HOME variable is not set, specify the path with this option.
 	`private_tracker_list` is a comma-separated list of your "private" trackers.
 	Actually you've to manually set your private trackers list because is not yet possible get the status from the torrent automatically, maybe one day it will be possible.
-	`live_trackers_list_url`, is the url where the trackers list are taken, is an automatic list.
+	`live_trackers_list_url`, is the url where the trackers list are taken, is an automatic list, you can specif
+ more than one url, just follow the example in the file.
 * Now the configuration is done, you've to configure Radarr and/or Sonarr, personally I:
 1. Create a custom script (settings -> connect -> add notification -> Custom Script)
 2. The name is not important, I use Add Transmission Trackers, you can use any name you like
