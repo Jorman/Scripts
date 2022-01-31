@@ -10,7 +10,7 @@ t_host=localhost
 # Port
 t_port=9091
 # Configure here your private trackers
-private_tracker_list='jumbohostpro,connecting,torrentbytes,shareisland,hdtorrents,girotorrent,bigtower,arabafenice,alpharatio,netcosmo,torrentleech,tleechreload,milkie'
+private_tracker_list=''
 # Configure here your trackers list
 live_trackers_list_url='https://newtrackon.com/api/stable'
 ########## CONFIGURATIONS ##########
@@ -149,18 +149,37 @@ if [ "$1" == "--force" ]; then
   shift
 fi
 
-if [ -n "$sonarr_download_id" ] || [ -n "$radarr_download_id" ]; then
-  if [[ -n "$sonarr_download_id" ]]; then
+if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n "${lidarr_download_id}" ]] || [[ -n "${readarr_download_id}" ]]; then
+  wait 5
+  if [[ -n "${sonarr_download_id}" ]]; then
     echo "Sonarr varialbe found -> $sonarr_download_id"
-    sonarr_download_id=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
-  else
+    hash=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
+  fi
+
+  if [[ -n "${radarr_download_id}" ]]; then
     echo "Radarr varialbe found -> $radarr_download_id"
-    radarr_download_id=$(echo "$radarr_download_id" | awk '{print tolower($0)}')
+    hash=$(echo "$radarr_download_id" | awk '{print tolower($0)}')
+  fi
+
+  if [[ -n "${lidarr_download_id}" ]]; then
+    echo "Lidarr varialbe found -> $lidarr_download_id"
+    hash=$(echo "$lidarr_download_id" | awk '{print tolower($0)}')
+  fi
+
+  if [[ -n "${readarr_download_id}" ]]; then
+    echo "Readarr varialbe found -> $readarr_download_id"
+    hash=$(echo "$readarr_download_id" | awk '{print tolower($0)}')
+  fi
+
+  hash_check "${hash}"
+  if [[ $? -ne 0 ]]; then
+    echo "The download is not for a torrent client, I'll exit"
+    exit
   fi
   auto_tor_grab="1"
 fi
 
-if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]]; then
+if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]] || [[ $lidarr_eventtype == "Test" ]] || [[ $readarr_eventtype == "Test" ]]; then
   echo "Test in progress, all ok"
   test_in_progress=1
 fi
@@ -272,14 +291,6 @@ else # auto_tor_grab active, so radarr or sonarr
     sleep 1
     : $((secs--))
   done
-
-  if [ -n "$sonarr_download_id" ]; then
-    echo "Auto torrent mode, Sonarr download"
-    hash=$sonarr_download_id
-  else
-    echo "Auto torrent mode, Radarr download"
-    hash=$radarr_download_id
-  fi
 
   if [ -n "$private_tracker_list" ]; then #private tracker list present, need some more check
     echo -e "\e[0m\e[33mPrivate tracker list present, checking if the torrent is private\e[0m"

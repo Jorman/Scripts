@@ -12,7 +12,7 @@ qbt_password="adminadmin"
 # Custom path have to be used when you want to save the TorrentTrackersList to a different location. A good example is when you're using this script with docker
 custom_save_path=""
 # Configure here your private trackers
-private_tracker_list='jumbohostpro,connecting,torrentbytes,shareisland,hdtorrents,girotorrent,bigtower,arabafenice,alpharatio,netcosmo,torrentleech,tleechreload,milkie'
+private_tracker_list=''
 # Configure here your trackers list
 declare -a live_trackers_list_urls=(
 									"https://newtrackon.com/api/stable"
@@ -235,7 +235,7 @@ if [ "$1" == "--force" ]; then
 	shift
 fi
 
-if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n "${lidarr_download_id}" ]]; then
+if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n "${lidarr_download_id}" ]] || [[ -n "${readarr_download_id}" ]]; then
 	wait 5
 	if [[ -n "${sonarr_download_id}" ]]; then
 		echo "Sonarr varialbe found -> $sonarr_download_id"
@@ -252,6 +252,11 @@ if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n
 		hash=$(echo "$lidarr_download_id" | awk '{print tolower($0)}')
 	fi
 
+	if [[ -n "${readarr_download_id}" ]]; then
+		echo "Readarr varialbe found -> $readarr_download_id"
+		hash=$(echo "$readarr_download_id" | awk '{print tolower($0)}')
+	fi
+
 	hash_check "${hash}"
 	if [[ $? -ne 0 ]]; then
 		echo "The download is not for a torrent client, I'll exit"
@@ -260,7 +265,7 @@ if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n
 	auto_tor_grab="1"
 fi
 
-if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]] || [[ $lidarr_eventtype == "Test" ]]; then
+if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]] || [[ $lidarr_eventtype == "Test" ]] || [[ $readarr_eventtype == "Test" ]]; then
 	echo "Test in progress, all ok"
 	test_in_progress=1
 fi
