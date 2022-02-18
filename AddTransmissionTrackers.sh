@@ -142,6 +142,17 @@ generate_trackers_list () {
   tracker_list=$(cat "$trackers_list_file")
   number_of_trackers_in_list=$(grep "" -c "$trackers_list_file")
 }
+
+hash_check() {
+  case $1 in
+    ( *[!0-9A-Fa-f]* | "" ) return 1 ;;
+    ( * )
+      case ${#1} in
+        ( 32 | 40 ) return 0 ;;
+        ( * )       return 1 ;;
+      esac
+  esac
+}
 ########## FUNCTIONS ##########
 
 if [ "$1" == "--force" ]; then
