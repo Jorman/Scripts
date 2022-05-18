@@ -230,9 +230,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
         grep -iF "$tor_to_search" | \
         sed -nr 's:(^.{6}).*:\1:;s: ::gp')
     else # parameter is a number
-      torrent_found=$(echo "$torrents_list" | \
-        sed -nr '1d;/^Sum:/d;s: :0:g;s:^(......).*:\1:p' | \
-        grep $(echo 0000$tor_to_search | sed -nr 's:.*([0-9]{4}$):\1:p'))
+      torrent_found=$($transmission_remote $transmission_default_access -t$tor_to_search -i | sed -nr 's/ *Id: ?(.*)/\1/p')
     fi
 
     if [[ -n "$torrent_found" ]]; then
