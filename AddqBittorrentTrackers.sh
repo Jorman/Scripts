@@ -9,42 +9,22 @@ qbt_port="8081"
 qbt_username="admin"
 # Password to access to Web UI
 qbt_password="adminadmin"
-# Custom path have to be used when you want to save the TorrentTrackersList to a different location. A good example is when you're using this script with docker
-custom_save_path=""
+
 # Configure here your private trackers
 private_tracker_list=''
 # Configure here your trackers list
 declare -a live_trackers_list_urls=(
-									"https://newtrackon.com/api/stable"
-									"https://trackerslist.com/best.txt"
-									"https://trackerslist.com/http.txt"
-									"https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
-                				)
-########## CONFIGURATIONS ##########
-
-if [[ -z $custom_save_path ]]; then
-	trackers_list_file="${HOME}/TorrentTrackersList"
-else
-	trackers_list_file="${custom_save_path}/TorrentTrackersList"
-fi
-
-if [[ -e $trackers_list_file ]]; then
-	if [[ -w $trackers_list_file ]]; then
-		echo "${trackers_list_file} is ok and writable"
-	else
-		echo -e "\n\e[0;91;1mError accessing tracker file list. Aborting.\n\e[0m"
-		echo "I'm unable to write to ${trackers_list_file}"
-		echo "Please check your configuration"
-		exit 1
-	fi
-fi
+	"https://newtrackon.com/api/stable"
+	"https://trackerslist.com/best.txt"
+	"https://trackerslist.com/http.txt"
+	"https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
+    )
 
 jq_executable="$(command -v jq)"
 curl_executable="$(command -v curl)"
 auto_tor_grab=0
 test_in_progress=0
 applytheforce=0
-first_run=0
 
 if [[ -z $jq_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on jq. Aborting.\n\e[0m"
@@ -56,23 +36,20 @@ fi
 if [[ -z $curl_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on curl. Aborting.\n\e[0m"
 	echo "You can install it with -> sudo apt install curl"
-	exit 1
+	exit 2
 fi
 
 ########## FUNCTIONS ##########
-tracker_list_upgrade () {
-	if [[ -e ${trackers_list_file} ]]; then
-		echo "removing old ${trackers_list_file} ... done"
-		rm -rf "${trackers_list_file}"
-	fi
-	echo "Downloading/Upgrading tracker list ..."
+generate_trackers_list () {
 	for j in "${live_trackers_list_urls[@]}"; do
-		$curl_executable -sS $j >> "${trackers_list_file}"
-		echo "" >> "${trackers_list_file}"
+		tmp_trackers_list+=$($curl_executable -sS $j)
+		tmp_trackers_list+=$'\n'
 	done
+
+	trackers_list=$(echo "$tmp_trackers_list" | awk '{for (i=1;i<=NF;i++) if (!a[$i]++) printf("%s%s",$i,FS)}{printf("\n")}' | xargs | tr ' ' '\n')
 	if [[ $? -ne 0 ]]; then
 		echo "I can't download the list, I'll use a static one"
-cat >"${trackers_list_file}" <<'EOL'
+cat >"${trackers_list}" <<'EOL'
 udp://tracker.coppersurfer.tk:6969/announce
 http://tracker.internetwarriors.net:1337/announce
 udp://tracker.internetwarriors.net:1337/announce
@@ -134,17 +111,10 @@ http://peersteers.org:80/announce
 http://fxtt.ru:80/announce
 EOL
 	fi
-	sed -i '/^$/d' "${trackers_list_file}"
-	echo "Downloading/Upgrading done."
-	echo "Checking for duplicates..."
-	mv "${trackers_list_file}" "${trackers_list_file}.raw"
-	awk '!seen[$0]++' "${trackers_list_file}.raw" > "${trackers_list_file}"
-	rm -rf "${trackers_list_file}.raw"
-	echo "done"
+	number_of_trackers_in_list=$(echo "$trackers_list" | wc -l)
 }
 
 inject_trackers () {
-	get_cookie
 	start=1
 	while read tracker; do
 		if [ -n "$tracker" ]; then
@@ -160,34 +130,8 @@ inject_trackers () {
 			fi
 		fi
 		start=$((start+1))
-	done <<< "$tracker_list"
+	done <<< "$trackers_list"
 	echo "Done!"
-}
-
-generate_trackers_list () {
-	if [[ -s ${trackers_list_file} ]]; then # the file exist and is not empty?
-		echo "Tracker file exist, I'll check if I need to upgrade it"
-		days="1"
-
-		# collect both times in seconds-since-the-epoch
-		days_ago=$(date -d "now -$days days" +%s)
-		file_time=$(date -r "${trackers_list_file}" +%s)
-
-		if (( $file_time <= $days_ago )); then
-			echo "File ${trackers_list_file} exists and is older than $days day, I'll upgrade it"
-			tracker_list_upgrade
-		else
-			echo "File ${trackers_list_file} is not older than $days days and I don't need to upgrade it"
-		fi
-
-	else # file don't exist I've to download it
-		echo "Tracker file don't exist I'll create a new one"
-		tracker_list_upgrade
-	fi
-
-	tracker_list=$(cat "${trackers_list_file}")
-	number_of_trackers_in_list=$(grep "" -c "${trackers_list_file}")
-	first_run=1
 }
 
 get_torrent_list () {
@@ -260,13 +204,13 @@ if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n
 	hash_check "${hash}"
 	if [[ $? -ne 0 ]]; then
 		echo "The download is not for a torrent client, I'll exit"
-		exit
+		exit 3
 	fi
 	auto_tor_grab="1"
 fi
 
 if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]] || [[ $lidarr_eventtype == "Test" ]] || [[ $readarr_eventtype == "Test" ]]; then
-	echo "Test in progress, all ok"
+	echo "Test in progress..."
 	test_in_progress=1
 fi
 
@@ -277,7 +221,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 
 	if [ $? -ne 0 ]; then
 		echo -e "\n\e[0;91;1mFail on qBittorrent. Aborting.\n\e[0m"
-		exit 1
+		exit 4
 	fi
 
 	if [ $# -eq 0 ]; then
@@ -288,7 +232,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		echo -e "Names are case insensitive "
 		echo -e "\n\e[0;32;1mCurrent torrents:\e[0;32m"
 		echo "$torrents" | $jq_executable --raw-output '.[] .name'
-		exit 1
+		exit 5
 	fi
 
 	while [ $# -ne 0 ]; do
@@ -339,7 +283,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 
 				if [ $private_check -eq 0 ]; then
 					echo -e "\e[0m\e[33mThe torrent is not private, I'll inject trackers on it\e[0m"
-					[[ $first_run -eq 0 ]] && generate_trackers_list
+					generate_trackers_list
 					inject_trackers ${tor_hash_array[$i]}
 				fi
 			else
@@ -348,7 +292,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 				else
 					echo -e "\e[0m\e[33mPrivate tracker list not present, proceding like usual\e[0m"
 				fi
-				[[ $first_run -eq 0 ]] && generate_trackers_list
+				generate_trackers_list
 				inject_trackers ${tor_hash_array[$i]}
 			fi
 		done
@@ -366,13 +310,13 @@ else # auto_tor_grab active, so radarr or sonarr
 		for j in ${private_tracker_list//,/ }; do
 			if [[ "$tor_trackers_list" =~ ${j,,} ]];then
 				echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $j <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
-				exit
+				exit 6
 			fi
 		done
 		echo "Torrent is not private I'll inject trackers"
 	else
 		echo -e "\e[0m\e[33mPrivate tracker list not present, proceding like usual\e[0m"
 	fi
-	[[ $first_run -eq 0 ]] && generate_trackers_list
+	generate_trackers_list
 	inject_trackers $hash
 fi
