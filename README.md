@@ -84,16 +84,16 @@ This script use transmission-remote, normally this is already installed if you u
 	`30 01 * * * /PATHOFTHESCRIPT/TransmissionRemoveCompleteTorrent.sh >/dev/null 2>&1` this execute the script at 01:30 every day.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # qBittorrentHardlinksChecker.sh
-The idea of this script is very simple, in my case it helps, judge for yourself if it helps you. For managing the seed times of automatic downloads from the various `*Arr`, I normally use `autoremove-torrent`, a very complete and very useful script that allows me to pick and choose category by category, tracker by tracker the various torrent removal settings, this is because the space available is not infinite. So I am forced to do regular cleanup among the various downloads, and I always respect the rules of the various private trackers! But let's come to the idea:
+The idea of this script is very simple, in my case it helps, judge for yourself if it helps you. For managing the seed times of automatic downloads from the various `*Arr`, I normally use [antoremove-torrent](https://github.com/jerrymakesjelly/autoremove-torrents), a very complete and very useful script that allows me to pick and choose category by category, tracker by tracker the various torrent removal settings, this is because the space available is not infinite. So I am forced to do regular cleanup among the various downloads, and I always respect the rules of the various private trackers! But let's come to the idea:
 Very simple, if in the automatic downloading programs, `*Arr`, the configuration is set to generate hardlinks then it means that until I have deleted both the file from the torrent client and the linked file managed automatically, the space occupied on the disk will be the same. This means that as long as I haven't watched and deleted that movie, etc., I could safely keep the share the downloaded file, because it no longer takes up disk space, being a hardlink. So with this script, for the categories you set, you can check each download and if there is one or more hardlinks the file will not be deleted from qBittorrent, if on the other hand the file has only one hardlink then the script will consider whether or not to delete the file by checking the minimum seed time that has been set. 
-Here is an idea of usage: I for example for only downloads that end up in the automatic categories, e.g. `tv` for Radarr (or whatever your category is) rather than `tv_show` for Sonarr (or whatever your category is), etc., before running `autoremove-torrent` (appropriately configured) I run this script and by doing so I make sure that any "duplicates" are not deleted and remain in seed, helping me with the share ratio and minimum seed time
+Here is an idea of usage: I for example for only downloads that end up in the automatic categories, e.g. `movie` for Radarr (or whatever your category is) rather than `tv_show` for Sonarr (or whatever your category is), etc., before running [antoremove-torrent](https://github.com/jerrymakesjelly/autoremove-torrents) (appropriately configured) I run this script and by doing so I make sure that any "duplicates" are not deleted and remain in seed, helping me with the share ratio and minimum seed time
 
 How to use:
 * First make sure your Radarr/Sonarr user can execute the script with some like this:
 	`chown USER:GROUP qBittorrentHardlinksChecker.sh` then be sure that is executable
 	`chmod +x AddqBittorrentTrackers.sh`
 	where `USER:GROUP` is the user and group of Radarr/Sonarr
-	Note: not being a script that is called from `*Arr` is not strictly necessary, make sure that the script however can be executed by the user concerned
+	Note: not being a script that is called from `*Arr` is not strictly necessary to change user and group, just make sure that the script however can be executed by the user concerned
 * Modify the `########## CONFIGURATIONS ##########` section:
 	`qbt_username` -> username to access to qBittorrent Web UI
 	`qbt_password` -> username to access to qBittorrent Web UI
@@ -102,4 +102,4 @@ How to use:
 	`qbt_port` -> is the Web UI port
 	`category_list` -> is the list of categories where the script performs the check
 	`min_seeding_time` -> is the minimum seed time expressed in seconds
-*	I recommend you to putthis script under cron or create a timer for systemd, I personally use it via timer so I can run right after `antoremove-torrent`
+*	I recommend you to putthis script under cron or create a timer for systemd, I personally use it via timer so I can run right after [antoremove-torrent](https://github.com/jerrymakesjelly/autoremove-torrents)
