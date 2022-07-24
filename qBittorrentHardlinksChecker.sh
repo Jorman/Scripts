@@ -11,7 +11,7 @@ qbt_username="admin"
 qbt_password="adminadmin"
 
 # Configure here your categories
-category_list='movie,tv_show'
+category_list=''
 
 # Minimum seed time before deletion, expressed in seconds, for example 864000 means 10 days
 min_seeding_time=864000
@@ -43,27 +43,26 @@ get_cookie () {
 
 get_torrent_list () {
 	[[ -z "$qbt_cookie" ]] && get_cookie
-	category="$1"
 	torrents=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 		--cookie - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/info?category=${category}")
+		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/info")
 }
 
 delete_torrent () {
 	[[ -z "$qbt_cookie" ]] && get_cookie
 	hash="$1"
-	torrents=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+	$curl_executable --silent --fail --show-error \
 		--cookie - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/delete?hashes=${hash}&deleteFiles=true")
+		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/delete?hashes=${hash}&deleteFiles=true"
 }
 ########## FUNCTIONS ##########
 
 if [ -n "$category_list" ]; then
+
+	get_torrent_list
+
 	for j in ${category_list//,/ }; do
-
-		get_torrent_list "${j}"
-
-		torrent_name_list=$(echo "$torrents" | $jq_executable --raw-output '.[] .name')
+		torrent_name_list=$(echo "$torrents" | $jq_executable --raw-output --arg tosearch "$j" '.[] | select(.category == "\($tosearch)") | .name')
 
 		if [[ -z "$torrent_name_list" ]]; then
 			echo "There's no categories named ${j}"
