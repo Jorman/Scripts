@@ -104,5 +104,5 @@ How to use:
 	`min_seeding_time` -> is the minimum seed time expressed in seconds
 	`only_private` -> if true, the script will only check the torrents that is from private tracker, in this way you can set [antoremove-torrent](https://github.com/jerrymakesjelly/autoremove-torrents) in order to work only the ramaining trackers. This help the share ration and helps you to find and remove torrent from public tarckers with your own rules
 	`private_torrents_check_orphan` -> if true, only for private tracker, check the torrent and if is not registered will be deleted
-	`public_torrent_check_bad_trackers` -> if true, only for public torrent, check the trackers and the bad one will be eliminated, not the torrent only the trackers. Be patient is a "slow" function during the deleting phase
+	`public_torrent_check_bad_trackers` -> if true, only for public torrent, check the trackers and the bad one will be eliminated, not the torrent only the trackers. Be patient can be a "slow" function during the deleting phase
 *	I recommend you to putthis script under cron or create a timer for systemd, I personally use it via timer so I can run right after [antoremove-torrent](https://github.com/jerrymakesjelly/autoremove-torrents)

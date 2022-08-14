@@ -252,10 +252,9 @@ if [[ $public_torrent_check_bad_trackers == true ]]; then
 			url_list=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 0)) .url')
 
 			if [[ ! -z "$url_list" ]]; then
-				echo "Some problem found on -> ${torrent_name_array[$i]}, fixing"
-				while read -r single_url; do
-					remove_bad_tracker ${torrent_hash_array[$i]} ${single_url}
-				done <<< "$url_list"
+				echo "Some problem found on -> ${torrent_name_array[$i]}"
+				echo "fixing..."
+				remove_bad_tracker ${torrent_hash_array[$i]} $(echo $url_list | tr '\n' ' ' | tr ' ' '|' | rev | cut -c2- | rev)
 				echo "------------------------------"
 			else
 				continue
