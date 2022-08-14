@@ -11,13 +11,19 @@ qbt_username="admin"
 qbt_password="adminadmin"
 
 # Configure here your categories, comma separated, like -> movie,tv_show
-category_list='Serie_Tv,Film'
+categories='Serie_Tv,Film'
 
 # Minimum seed time before deletion, expressed in seconds, for example 864000 means 10 days
 min_seeding_time=864000
 
-# Check only private torrents? if not true (lowercase) will check all torrents in given categories
+# Check only private torrents? if not true (lowercase) will check all torrents in given categories not only the private one
 only_private=true
+
+# If true, only for private tracker, check the torrent and if is not registered will be deleted
+private_torrents_check_orphan=true
+
+# If true, only for public torrent, check the trackers and the bad one will be eliminated, not the torrent only the trackers
+public_torrent_check_bad_trackers=true
 ########## CONFIGURATIONS ##########
 
 jq_executable="$(command -v jq)"
@@ -51,159 +57,211 @@ get_torrent_list () {
 		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/info")
 }
 
-get_tracker_data () {
-	hash="$1"
-	torrent_tracker_data=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
-		--cookie - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=${hash}")
-}
-
-get_hash_list () {
-	[[ -z "$qbt_cookie" ]] && get_cookie
-	hash_list=$(echo "$torrent_list" | $jq_executable --raw-output '.[] | .hash')
-}
-
 delete_torrent () {
 	hash="$1"
 	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 		--cookie - \
 		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/delete?hashes=${hash}&deleteFiles=true"
+	echo "Deleted"
+}
+
+reannounce_torrent () {
+	hash="$1"
+	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		--cookie - \
+		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/reannounce?hashes=${hash}"
+}
+
+remove_bad_tracker () {
+	hash="$1"
+	single_url="$2"
+	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		--cookie - \
+		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/reannounce?hashes=${hash}&urls=${single_url}"
+}
+
+unset_array () {
+	array_element="$1"
+	unset torrent_name_array[$array_element]
+	unset torrent_hash_array[$array_element]
+	unset torrent_path_array[$array_element]
+	unset torrent_seeding_time_array[$array_element]
+	unset torrent_progress_array[$array_element]
+	unset private_torrent_array[$array_element]
+	unset torrent_trackers_array[$array_element]
+	unset torrent_category_array[$array_element]
+}
+
+wait() {
+	w=$1
+	echo "I'll wait ${w}s to be sure the reannunce going well..."
+	while [ $w -gt 0 ]; do
+		echo -ne "$w\033[0K\r"
+		sleep 1
+		w=$((w-1))
+	done
 }
 ########## FUNCTIONS ##########
 
-if [ -n "$category_list" ]; then
+get_torrent_list
 
-	get_torrent_list
+if [ -z "$torrent_list" ]; then
+	echo "No torrents founds to check"
+	exit
+fi
 
-	for j in ${category_list//,/ }; do
-		torrent_name_list=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$j" '.[] | select(.category == "\($tosearch)") | .name')
+echo "Collecting data from qBittorrent, wait..."
 
-		if [[ -z "$torrent_name_list" ]]; then
-			echo "There's no categories named ${j}"
+torrent_name_array=()
+torrent_hash_array=()
+torrent_path_array=()
+torrent_seeding_time_array=()
+torrent_progress_array=()
+private_torrent_array=()
+torrent_trackers_array=()
+torrent_category_array=()
+
+while IFS= read -r line; do
+	torrent_name_array+=("$line")
+done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .name')
+
+while IFS= read -r line; do
+	torrent_hash_array+=("$line")
+done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .hash')
+
+while IFS= read -r line; do
+	torrent_path_array+=("$line")
+done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .content_path')
+
+while IFS= read -r line; do
+	torrent_seeding_time_array+=("$line")
+done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .seeding_time')
+
+while IFS= read -r line; do
+	torrent_progress_array+=("$line")
+done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .progress')
+
+while IFS= read -r line; do
+	torrent_category_array+=("$line")
+done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .category')
+
+for i in "${!torrent_hash_array[@]}"; do
+	torrent_trackers_array[$i]=$($curl_executable --silent --fail --show-error --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=${torrent_hash_array[$i]}")
+done
+
+for i in "${!torrent_hash_array[@]}"; do
+	private_torrent_array[$i]=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[0] | .msg | contains("private")')
+done
+
+if [ -n "$categories" ]; then
+	echo "Checking hardlinks:"
+	for j in ${categories//,/ }; do
+		test=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$j" '.[] | select(.category == "\($tosearch)") | .name')
+
+		if [[ -z "$test" ]]; then
+			echo "There's no categories named ${j} or is empty"
 			continue
 		else
+			echo "#####################################"
 			echo "Checking category ${j}:"
-			tor_name_array=()
-			tor_hash_array=()
-			tor_path_array=()
-			tor_seeding_time_array=()
-			tor_progress_array=()
-			while read -r single_found; do
+			echo "#####################################"
+			echo ""
+
+			for i in "${!torrent_hash_array[@]}"; do
 				if [[ $only_private == true ]]; then
-					private_check=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .hash')" | $jq_executable --raw-output '.[0] | .msg | contains("private")')
+					if [[ ${torrent_category_array[$i]} == ${j} ]] && [[ ${private_torrent_array[$i]} == true ]]; then
+						echo "Analyzing torrent -> ${torrent_name_array[$i]}"
 
-					if [[ $private_check == true ]]; then
-						tor_name_array+=("$single_found")
-						hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .hash')
-						tor_hash_array+=("$hash")
-						path=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .content_path')
-						tor_path_array+=("$path")
-						seeding_time=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .seeding_time')
-						tor_seeding_time_array+=("$seeding_time")
-						progress=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .progress')
-						tor_progress_array+=("$progress")
-					fi
-				else
-					tor_name_array+=("$single_found")
-					hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .hash')
-					tor_hash_array+=("$hash")
-					path=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .content_path')
-					tor_path_array+=("$path")
-					seeding_time=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .seeding_time')
-					tor_seeding_time_array+=("$seeding_time")
-					progress=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .progress')
-					tor_progress_array+=("$progress")
-				fi
-			done <<< "$torrent_name_list"
-		fi
-
-		if [ ${#tor_name_array[@]} -gt 0 ]; then
-			for i in "${!tor_name_array[@]}"; do
-				echo "Analyzing torrent -> ${tor_name_array[$i]}"
-
-				if awk "BEGIN {exit !(${tor_progress_array[$i]} < 1)}"; then
-					printf "Torrent incomplete, nothing to do -> %0.3g%%\n" $(awk -v var="${tor_progress_array[$i]}" 'BEGIN{print var * 100}')
-				else
-					if [ "$(ls -l "${tor_path_array[$i]}" | awk '{print $2}')" = "1" ]; then
-						echo "Found 1 hardlinks, checking seeding time:"
-						if [ ${tor_seeding_time_array[$i]} -gt $min_seeding_time ]; then
-							echo "I can delete this torrent, seeding time more than $min_seeding_time seconds"
-							delete_torrent ${tor_hash_array[$i]}
+						if awk "BEGIN {exit !(${torrent_progress_array[$i]} < 1)}rent"; then
+							printf "Torrent incomplete, nothing to do -> %0.3g%%\n" $(awk -v var="${torrent_progress_array[$i]}" 'BEGIN{print var * 100}')
 						else
-							echo "I can not delete this torrent, seeding time not meet -> ${tor_seeding_time_array[$i]}/${min_seeding_time}"
+							if [ "$(ls -l "${torrent_path_array[$i]}" | awk '{print $2}')" = "1" ]; then
+								echo "Found 1 hardlinks, checking seeding time:"
+								if [ ${torrent_seeding_time_array[$i]} -gt $min_seeding_time ]; then
+									echo "I can delete this torrent, seeding time more than $min_seeding_time seconds"
+
+									reannounce_torrent ${torrent_hash_array[$i]}
+									wait 15
+									delete_torrent ${torrent_hash_array[$i]}
+									unset_array $i
+								else
+									echo "I can't delete this torrent, seeding time not meet -> ${torrent_seeding_time_array[$i]}/${min_seeding_time}"
+								fi
+							else
+								echo "More than 1 hardlinks found, nothing to do"
+							fi
 						fi
-					else
-						echo "More than 1 hardlinks found, nothing to do"
+						echo "------------------------------"
+					fi
+				else
+					if [[ ${torrent_category_array[$i]} == ${j} ]]; then
+						echo "Analyzing torrent -> ${torrent_name_array[$i]}"
+
+						if awk "BEGIN {exit !(${torrent_progress_array[$i]} < 1)}rent"; then
+							printf "Torrent incomplete, nothing to do -> %0.3g%%\n" $(awk -v var="${torrent_progress_array[$i]}" 'BEGIN{print var * 100}')
+						else
+							if [ "$(ls -l "${torrent_path_array[$i]}" | awk '{print $2}')" = "1" ]; then
+								echo "Found 1 hardlinks, checking seeding time:"
+								if [ ${torrent_seeding_time_array[$i]} -gt $min_seeding_time ]; then
+									echo "I can delete this torrent, seeding time more than $min_seeding_time seconds"
+									reannounce_torrent ${torrent_hash_array[$i]}
+									wait 15
+									delete_torrent ${torrent_hash_array[$i]}
+									unset_array $i
+								else
+									echo "I can't delete this torrent, seeding time not meet -> ${torrent_seeding_time_array[$i]}/${min_seeding_time}"
+								fi
+							else
+								echo "More than 1 hardlinks found, nothing to do"
+							fi
+						fi
+						echo "------------------------------"
 					fi
 				fi
-				echo "------------------------------"
 			done
-		else
-			echo "No torrents found, exiting"
 		fi
 	done
 	echo "Harklinks check completed"
+	echo "------------------------------"
 else
 	echo "Categories list empty"
+	echo "------------------------------"
 fi
 
-echo ""
+if [[ $private_torrents_check_orphan == true ]]; then
+	echo "Checking for orphan torrents:"
 
-get_torrent_list
-
-if [ -n "$torrent_list" ]; then
-	echo "Searching for orphan torrent and cleaning up bad trackers url"
-
-	get_hash_list
-
-	tor_name_array=()
-	tor_hashes_array=()
-	orphan_torrents_array=()
-	while read -r single_hashes; do
-		tor_hashes_array+=("$single_hashes")
-		orphan_torrent=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$single_hashes" | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 0) and (.msg|contains("unregistered"))) | any')
+	for i in "${!torrent_hash_array[@]}"; do
+		orphan_torrent=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 0) and (.msg|contains("unregistered"))) | any')
 		if [[ $orphan_torrent == true ]]; then
-			tor_name=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/info?hashes=$single_hashes" | $jq_executable --raw-output '.[] | .name')
-			tor_name_array+=("$tor_name")
-			orphan_torrents_array+=("$single_hashes")
-		fi
-	done <<< "$hash_list"
-
-	if [ ${#orphan_torrents_array[@]} -gt 0 ]; then
-		for i in "${!orphan_torrents_array[@]}"; do
-			echo "Found orphan torrent -> ${tor_name_array[$i]}, deleting"
-			delete_torrent ${orphan_torrents_array[$i]}
-		done
-	fi
-
-	get_torrent_list
-	get_hash_list
-
-	tor_name_array=()
-	tor_hashes_array=()
-	while read -r single_hashes; do
-		tor_hashes_array+=("$single_hashes")
-		tor_name=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/info?hashes=$single_hashes" | $jq_executable --raw-output '.[] | .name')
-		tor_name_array+=("$tor_name")
-	done <<< "$hash_list"
-
-	for i in "${!tor_hashes_array[@]}"; do
-		get_tracker_data ${tor_hashes_array[$i]}
-
-		url_list=$(echo "$torrent_tracker_data" | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 0)) .url')
-
-		if [[ ! -z "$url_list" ]]; then
-			echo "Some problem found on -> ${tor_name_array[$i]}, fixing"
-
-			while read -r single_url; do
-				echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/removeTrackers?hash=${tor_hashes_array[$i]}&urls=${single_url}"
-			done <<< "$url_list"
+			echo "Found orphan torrent -> ${torrent_name_array[$i]}, deleting"
+			delete_torrent ${torrent_hash_array[$i]}
+			unset_array $i
 			echo "------------------------------"
-		else
-			continue
 		fi
 	done
-	echo "Done"
-else
-	echo "No torrents founds to check"
+	echo "Orphan check completed"
+	echo "------------------------------"
+fi
+
+if [[ $public_torrent_check_bad_trackers == true ]]; then
+	echo "Checking for bad trackers:"
+
+	for i in "${!torrent_hash_array[@]}"; do
+		if [[ ${private_torrent_array[$i]} != true ]]; then
+			url_list=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 0)) .url')
+
+			if [[ ! -z "$url_list" ]]; then
+				echo "Some problem found on -> ${torrent_name_array[$i]}, fixing"
+				while read -r single_url; do
+					remove_bad_tracker ${torrent_hash_array[$i]} ${single_url}
+				done <<< "$url_list"
+				echo "------------------------------"
+			else
+				continue
+			fi
+		fi
+	done
+	echo "Bad trackers check completed"
+	echo "------------------------------"
 fi

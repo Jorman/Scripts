@@ -23,8 +23,8 @@ To use this script you'll need:
 	`qbt_host` -> if the script is on the same device of qBittorrent `http://localhost`, otherwise, you've to set to the remote device
 	`qbt_port` -> is the Web UI port
 	`custom_save_path` -> the script have to save a file with tracker list, normally that file is saved in user home path, however if the home directory is not writable (not exist or whatever), the script fail. So if the home of the user that run the script is not reachable, this option is the right one. This option can be useful when used in combination with containers, so if the HOME variable is not set, specify the path with this option.
-	`private_tracker_list` is a comma-separated list of your "private" trackers.
-	Actually you've to manually set your private trackers list because is not yet possible get the status from the torrent automatically, maybe one day it will be possible.
+	~~`private_tracker_list` is a comma-separated list of your "private" trackers.
+	Actually you've to manually set your private trackers list because is not yet possible get the status from the torrent automatically, maybe one day it will be possible.~~ -> No more needed, the script will check if the torrent is private or not automatically
 	`live_trackers_list_url`, is the url where the trackers list are taken, is an automatic list, you can specif
  more than one url, just follow the example in the file.
 * Now the configuration is done, you've to configure Radarr and/or Sonarr, personally I:
@@ -102,4 +102,7 @@ How to use:
 	`qbt_port` -> is the Web UI port
 	`category_list` -> is the list of categories where the script performs the check
 	`min_seeding_time` -> is the minimum seed time expressed in seconds
+	`only_private` -> if true, the script will only check the torrents that is from private tracker, in this way you can set [antoremove-torrent](https://github.com/jerrymakesjelly/autoremove-torrents) in order to work only the ramaining trackers. This help the share ration and helps you to find and remove torrent from public tarckers with your own rules
+	`private_torrents_check_orphan` -> if true, only for private tracker, check the torrent and if is not registered will be deleted
+	`public_torrent_check_bad_trackers` -> if true, only for public torrent, check the trackers and the bad one will be eliminated, not the torrent only the trackers
 *	I recommend you to putthis script under cron or create a timer for systemd, I personally use it via timer so I can run right after [antoremove-torrent](https://github.com/jerrymakesjelly/autoremove-torrents)
