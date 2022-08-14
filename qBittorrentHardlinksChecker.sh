@@ -77,7 +77,7 @@ remove_bad_tracker () {
 	single_url="$2"
 	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 		--cookie - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/reannounce?hashes=${hash}&urls=${single_url}"
+		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/removeTrackers?hash=${hash}&urls=${single_url}"
 }
 
 unset_array () {
