@@ -26,6 +26,7 @@ curl_executable="$(command -v curl)"
 auto_tor_grab=0
 test_in_progress=0
 applytheforce=0
+all_torrent=0
 
 if [[ -z $jq_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on jq. Aborting.\n\e[0m"
@@ -171,124 +172,168 @@ wait() {
 }
 ########## FUNCTIONS ##########
 
-if [ "$1" == "--force" ]; then
-	applytheforce=1
-	shift
+if [ -t 1 ] ; then
+	if [[ ! $@ =~ ^\-.+ ]]; then
+		echo "Arguments must be passed with - in front, like -n"
+		echo ""
+		$0 -h
+		exit
+	fi
+
+	[ $# -eq 0 ] && $0 -h
+
+	if [ $# -eq 1 ] && [ $1 == "-f" ]; then
+		echo "Don't use only -f, you need to specify also the torrent!"
+		exit
+	fi
+
+	while getopts ":aflhn:" opt; do
+		case ${opt} in
+			a ) # If used inject trackers to all torrent.
+				all_torrent=1
+				;;
+			f ) # If used force the injection also in private trackers.
+				applytheforce=1
+				;;
+			l ) # Print the list of the torrent where you can inject trackers.
+				get_torrent_list
+				echo -e "\n\e[0;32;1mCurrent torrents:\e[0;32m"
+				echo "$torrent_list" | $jq_executable --raw-output '.[] .name'
+				;;
+			n ) # Specify the name of the torrent example -n foo or -n "foo bar", multiple -n can be used.
+				tor_arg_names+=("$OPTARG")
+				;;
+			: )
+				echo "Invalid option: -${OPTARG} requires an argument" 1>&2
+				exit 0
+				;;
+			\? )
+				echo "Unknow option: -${OPTARG}" 1>&2
+				exit 1
+				;;
+			h | * ) # Display help.
+				echo "Usage:"
+				echo "$0 -a	Inject trackers to all torrent in qBittorrent, this not require any extra information"
+				echo "$0 -f	Force the injection of the trackers inside the private torrent too, this not require any extra information"
+				echo "$0 -l	Print the list of the torrent where you can inject trackers, this not require any extra information"
+				echo "$0 -n	Specify the torrent name or part of it, for example -n foo or -n 'foo bar'"
+				echo "$0 -h	Display this help"
+				echo "NOTE:"
+				echo "It's possible to specify more than -n in one single command"
+				echo "Just remember that if you set -a in useless to add any extra -n, but -f can always be used"
+				exit 2
+				;;
+		esac
+	done
+	shift $((OPTIND -1))
+else
+	if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n "${lidarr_download_id}" ]] || [[ -n "${readarr_download_id}" ]]; then
+		wait 5
+		if [[ -n "${sonarr_download_id}" ]]; then
+			echo "Sonarr varialbe found -> $sonarr_download_id"
+			hash=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
+		fi
+
+		if [[ -n "${radarr_download_id}" ]]; then
+			echo "Radarr varialbe found -> $radarr_download_id"
+			hash=$(echo "$radarr_download_id" | awk '{print tolower($0)}')
+		fi
+
+		if [[ -n "${lidarr_download_id}" ]]; then
+			echo "Lidarr varialbe found -> $lidarr_download_id"
+			hash=$(echo "$lidarr_download_id" | awk '{print tolower($0)}')
+		fi
+
+		if [[ -n "${readarr_download_id}" ]]; then
+			echo "Readarr varialbe found -> $readarr_download_id"
+			hash=$(echo "$readarr_download_id" | awk '{print tolower($0)}')
+		fi
+
+		hash_check "${hash}"
+		if [[ $? -ne 0 ]]; then
+			echo "The download is not for a torrent client, I'll exit"
+			exit 3
+		fi
+		auto_tor_grab="1"
+	fi
+
+	if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]] || [[ $lidarr_eventtype == "Test" ]] || [[ $readarr_eventtype == "Test" ]]; then
+		echo "Test in progress..."
+		test_in_progress=1
+	fi
 fi
 
-if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n "${lidarr_download_id}" ]] || [[ -n "${readarr_download_id}" ]]; then
-	wait 5
-	if [[ -n "${sonarr_download_id}" ]]; then
-		echo "Sonarr varialbe found -> $sonarr_download_id"
-		hash=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
+for i in "${tor_arg_names[@]}"; do
+	if [[ -z "${i// }" ]]; then
+		echo "one or more argument for -n not valid, try again"
+		exit
 	fi
-
-	if [[ -n "${radarr_download_id}" ]]; then
-		echo "Radarr varialbe found -> $radarr_download_id"
-		hash=$(echo "$radarr_download_id" | awk '{print tolower($0)}')
-	fi
-
-	if [[ -n "${lidarr_download_id}" ]]; then
-		echo "Lidarr varialbe found -> $lidarr_download_id"
-		hash=$(echo "$lidarr_download_id" | awk '{print tolower($0)}')
-	fi
-
-	if [[ -n "${readarr_download_id}" ]]; then
-		echo "Readarr varialbe found -> $readarr_download_id"
-		hash=$(echo "$readarr_download_id" | awk '{print tolower($0)}')
-	fi
-
-	hash_check "${hash}"
-	if [[ $? -ne 0 ]]; then
-		echo "The download is not for a torrent client, I'll exit"
-		exit 3
-	fi
-	auto_tor_grab="1"
-fi
-
-if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]] || [[ $lidarr_eventtype == "Test" ]] || [[ $readarr_eventtype == "Test" ]]; then
-	echo "Test in progress..."
-	test_in_progress=1
-fi
+done
 
 if [ $test_in_progress -eq 1 ]; then
 	echo "Good-bye!"
 elif [ $auto_tor_grab -eq 0 ]; then # manual run
 	get_torrent_list
 
-	if [ $? -ne 0 ]; then
-		echo -e "\n\e[0;91;1mFail on qBittorrent. Aborting.\n\e[0m"
-		exit 4
-	fi
+	if [ $all_torrent -eq 1 ]; then
+		while IFS= read -r line; do
+			torrent_name_array+=("$line")
+		done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .name')
 
-	if [ $# -eq 0 ]; then
-		echo -e "\n\e[31mThis script expects one or more parameters\e[0m"
-		echo -e "\e[0;36m${0##*/} \t\t- list current torrents "
-		echo -e "${0##*/} \$s1 \$s2...\t- add trackers to first torrent with part of name \$s1 and \$s2"
-		echo -e "${0##*/} .\t\t- add trackers to all torrents"
-		echo -e "Names are case insensitive "
-		echo -e "\n\e[0;32;1mCurrent torrents:\e[0;32m"
-		echo "$torrent_list" | $jq_executable --raw-output '.[] .name'
-		exit 5
-	fi
-
-	while [ $# -ne 0 ]; do
-		tor_to_search="$1"
-
-		if [ "$tor_to_search" = "." ]; then
-			torrent_name_check=1
-			torrent_name_list=$(echo "$torrent_list" | $jq_executable --raw-output '.[] .name')
-		else
-			torrent_name_list=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$tor_to_search" '.[] | select(.name|test("\($tosearch)";"i")) .name')
+		while IFS= read -r line; do
+			torrent_hash_array+=("$line")
+		done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .hash')
+	else
+		for i in "${tor_arg_names[@]}"; do
+			torrent_name_list=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$i" '.[] | select(.name|test("\($tosearch)";"i")) .name')
 
 			if [ -n "$torrent_name_list" ]; then # not empty
 				torrent_name_check=1
-				echo -e "\n\e[0;32;1mI found the following torrent:\e[0;32m"
+				echo -e "\n\e[0;32;1mFor argument ### $i ###\e[0;32m"
+				echo -e "\e[0;32;1mI found the following torrent:\e[0;32m"
 				echo "$torrent_name_list"
 			else
 				torrent_name_check=0
 			fi
-		fi
 
-		if [ $torrent_name_check -eq 0 ]; then
-			echo -e "\e[0;31;1mI didn't find a torrent with the text: \e[21m$1\e[0m"
-			shift
-			continue
-		else
-			while read -r single_found; do
-				tor_name_array+=("$single_found")
-				hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .hash')
-				tor_hash_array+=("$hash")
-				tor_trackers_list=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$hash" '.[] | select(.hash == "\($tosearch)") | .magnet_uri')
-				tor_trackers_array+=("$tor_trackers_list")
-			done <<< "$torrent_name_list"
-		fi
-		shift
-	done
+			if [ $torrent_name_check -eq 0 ]; then
+				echo -e "\e[0;31;1mI didn't find a torrent with the text: \e[21m$1\e[0m"
+				shift
+				continue
+			else
+				while read -r single_found; do
+					torrent_name_array+=("$single_found")
+					hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .hash')
+					torrent_hash_array+=("$hash")
+				done <<< "$torrent_name_list"
+			fi
+		done
+	fi
 
-	if [ ${#tor_name_array[@]} -gt 0 ]; then
-		for i in "${!tor_name_array[@]}"; do
+	if [ ${#torrent_name_array[@]} -gt 0 ]; then
+		echo ""
+		for i in "${!torrent_name_array[@]}"; do
 			echo -ne "\n\e[0;1;4;32mFor the Torrent: \e[0;4;32m"
-			echo "${tor_name_array[$i]}"
+			echo "${torrent_name_array[$i]}"
 
 			if [[ $ignore_private == true ]] || [ $applytheforce -eq 1 ]; then # Inject anyway the trackers inside any torrent
 				if [ $applytheforce -eq 1 ]; then
-					echo -e "\e[0m\e[33mApplytheforce active, I'll inject trackers anyway\e[0m"
+					echo -e "\e[0m\e[33mForce mode is active, I'll inject trackers anyway\e[0m"
 				else
-					echo -e "\e[0m\e[33mignore_private set to true or applytheforce active, I'll inject trackers anyway\e[0m"
+					echo -e "\e[0m\e[33mignore_private set to true, I'll inject trackers anyway\e[0m"
 				fi
 				generate_trackers_list
-				inject_trackers ${tor_hash_array[$i]}
+				inject_trackers ${torrent_hash_array[$i]}
 			else
-				private_check=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "${tor_name_array[$i]}" '.[] | select(.name == "\($tosearch)") | .hash')" | $jq_executable --raw-output '.[0] | .msg | contains("private")')
+				private_check=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "${torrent_name_array[$i]}" '.[] | select(.name == "\($tosearch)") | .hash')" | $jq_executable --raw-output '.[0] | .msg | contains("private")')
 
 				if [[ $private_check == true ]]; then
-					private_tracker_name=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "${tor_name_array[$i]}" '.[] | select(.name == "\($tosearch)") | .hash')" | $jq_executable --raw-output '.[3] | .url' | sed -e 's/[^/]*\/\/\([^@]*@\)\?\([^:/]*\).*/\2/')
+					private_tracker_name=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "${torrent_name_array[$i]}" '.[] | select(.name == "\($tosearch)") | .hash')" | $jq_executable --raw-output '.[3] | .url' | sed -e 's/[^/]*\/\/\([^@]*@\)\?\([^:/]*\).*/\2/')
 					echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $private_tracker_name <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 				else
 					echo -e "\e[0m\e[33mThe torrent is not private, I'll inject trackers on it\e[0m"
 					generate_trackers_list
-					inject_trackers ${tor_hash_array[$i]}
+					inject_trackers ${torrent_hash_array[$i]}
 				fi
 			fi
 		done
