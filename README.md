@@ -35,20 +35,24 @@ To use this script you'll need:
 
 Now, when Radarr and/or Sonarr will grab a new torrent, the script will be triggered and a custom tracker list will be added to the torrent, automatically, if the torrent is not from a private tracker.
 Is also possible to run the script manually, simply run the script `./AddqBittorrentTrackers.sh` and see all the possible options.
+I inserted a new way to call the script, with many options to inject trackers inside torrents.
+One note abount configuration, if you want to use it manually, before use it configure username, passowrd, host and port inside the file. Otherwise I would have to insert four new options to be called every time manually, or "complicate" it by inserting possibility to have a configuration file to be saved somewhere. If it is necessary I will do it but for now I think it is easier to keep only the necessary options.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # AddTransmissionTrackers.sh
 The purpose of this script is to inject trakers inside Transmission torrent, this can be used manually and can also works with Radarr/Sonarr in an automatic way.
 
-This script use transmission-remote, normally this is already installed if you use transmission.
+~~This script use transmission-remote, normally this is already installed if you use transmission.~~
+Transmission-remote is not needed anymore, I switch all the commands directly to /rpc so this's the very first release.
+I also included the possibility to call the script and specify name and/or id where add trackers
 
 * First make sure your Radarr/Sonarr user can execute the script with some like this:
 	`chown USER:USER AddTransmissionTrackers.sh` then be sue that is executable
 	`chmod +x AddTransmissionTrackers.sh`
 * Modify the `########## CONFIGURATIONS ##########` section:
-	`t_username`, `t_password`, `t_host` and `t_port` are all Transmission related.
-	`private_tracker_list` is a comma-separated list of your "private" trackers.
-	Actually you've to manually set your private trackers list because is not yet possible get the status from the torrent automatically, maybe one day this will be possible.
-	`live_trackers_list_url`, is the url where the trackers list are taken, is an automatic list.
+	`transmission_username`, `transmission_password`, `transmission_host` and `transmission_port` are all Transmission related.
+	~~`private_tracker_list` is a comma-separated list of your "private" trackers.
+	Actually you've to manually set your private trackers list because is not yet possible get the status from the torrent automatically, maybe one day it will be possible.~~ -> No more needed, the script will check if the torrent is private or not automatically
+	`live_trackers_list_url`, is the url where the trackers list are taken, is an automatic list, you can specify more than one url, just follow the example in the file.
 * Now the configuration is done, you've to configure Radarr and/or Sonarr, personally I:
 1. Create a custom script (settings -> connect -> add notification -> Custom Script)
 2. The name is not important, I use Add Transmission Trackers, you can use any name you like
@@ -58,6 +62,8 @@ This script use transmission-remote, normally this is already installed if you u
 
 Now, when Radarr and/or Sonarr will grab a new torrent, the script will be triggered and a custom tracker list will be added to the torrent, automatically, if the torrent is not from a private tracker.
 Is also possible to run the script manually, simply run the script `./AddTransmissionTrackers.sh` and see all the possible options.
+I inserted a new way to call the script, with many options to inject trackers inside torrents.
+One note abount configuration, if you want to use it manually, before use it configure username, passowrd, host and port inside the file. Otherwise I would have to insert four new options to be called every time manually, or "complicate" it by inserting possibility to have a configuration file to be saved somewhere. If it is necessary I will do it but for now I think it is easier to keep only the necessary options.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # TransmissionRemoveCompleteTorrent.sh
 The purpose of this script is to remove the complete torrent from Transmission, but only the torrent added by Radarr/Sonarr. The best way is to use it is to cronize it.

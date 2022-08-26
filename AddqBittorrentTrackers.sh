@@ -19,7 +19,7 @@ declare -a live_trackers_list_urls=(
 	"https://trackerslist.com/best.txt"
 	"https://trackerslist.com/http.txt"
 	"https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
-    )
+	)
 ########## CONFIGURATIONS ##########
 
 jq_executable="$(command -v jq)"
