@@ -20,6 +20,7 @@ declare -a live_trackers_list_urls=(
 	"https://trackerslist.com/http.txt"
 	"https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
     )
+########## CONFIGURATIONS ##########
 
 jq_executable="$(command -v jq)"
 curl_executable="$(command -v curl)"
@@ -174,7 +175,7 @@ wait() {
 
 if [ -t 1 ] ; then
 	if [[ ! $@ =~ ^\-.+ ]]; then
-		echo "Arguments must be passed with - in front, like -n"
+		echo "Arguments must be passed with - in front, like -n foo. Check instructions"
 		echo ""
 		$0 -h
 		exit
@@ -199,6 +200,7 @@ if [ -t 1 ] ; then
 				get_torrent_list
 				echo -e "\n\e[0;32;1mCurrent torrents:\e[0;32m"
 				echo "$torrent_list" | $jq_executable --raw-output '.[] .name'
+				exit
 				;;
 			n ) # Specify the name of the torrent example -n foo or -n "foo bar", multiple -n can be used.
 				tor_arg_names+=("$OPTARG")
