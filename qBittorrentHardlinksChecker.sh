@@ -232,7 +232,7 @@ if [[ $private_torrents_check_orphan == true ]]; then
 	echo "Checking for orphan torrents:"
 
 	for i in "${!torrent_hash_array[@]}"; do
-		orphan_torrent=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 0) and (.msg|contains("unregistered"))) | any')
+		orphan_torrent=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 0) and ((.msg|contains("unregistered")) or (.msg|contains("not registered")))) | any')
 		if [[ $orphan_torrent == true ]]; then
 			echo "Found orphan torrent -> ${torrent_name_array[$i]}, deleting"
 			delete_torrent ${torrent_hash_array[$i]}
