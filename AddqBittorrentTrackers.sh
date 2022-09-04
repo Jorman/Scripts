@@ -148,7 +148,7 @@ get_cookie () {
 	qbt_cookie=$($curl_executable --silent --fail --show-error \
 		--header "Referer: ${qbt_host}:${qbt_port}" \
 		--cookie-jar - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/auth/login?username=${qbt_username}&password=${qbt_password}")
+		--data 'username=${qbt_username}&password=${qbt_password}' ${qbt_host}:${qbt_port}/api/v2/auth/login)
 }
 
 hash_check() {
