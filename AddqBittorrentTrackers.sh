@@ -148,7 +148,7 @@ get_cookie () {
 	qbt_cookie=$($curl_executable --silent --fail --show-error \
 		--header "Referer: ${qbt_host}:${qbt_port}" \
 		--cookie-jar - \
-		--data 'username=${qbt_username}&password=${qbt_password}' ${qbt_host}:${qbt_port}/api/v2/auth/login)
+		--data "username=${qbt_username}&password=${qbt_password}" ${qbt_host}:${qbt_port}/api/v2/auth/login)
 }
 
 hash_check() {
@@ -230,24 +230,24 @@ if [ -t 1 ] ; then
 	shift $((OPTIND -1))
 else
 	if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n "${lidarr_download_id}" ]] || [[ -n "${readarr_download_id}" ]]; then
-		wait 5
+		#wait 5
 		if [[ -n "${sonarr_download_id}" ]]; then
-			echo "Sonarr varialbe found -> $sonarr_download_id"
+			echo "Sonarr variable found -> $sonarr_download_id"
 			hash=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
 		fi
 
 		if [[ -n "${radarr_download_id}" ]]; then
-			echo "Radarr varialbe found -> $radarr_download_id"
+			echo "Radarr variable found -> $radarr_download_id"
 			hash=$(echo "$radarr_download_id" | awk '{print tolower($0)}')
 		fi
 
 		if [[ -n "${lidarr_download_id}" ]]; then
-			echo "Lidarr varialbe found -> $lidarr_download_id"
+			echo "Lidarr variable found -> $lidarr_download_id"
 			hash=$(echo "$lidarr_download_id" | awk '{print tolower($0)}')
 		fi
 
 		if [[ -n "${readarr_download_id}" ]]; then
-			echo "Readarr varialbe found -> $readarr_download_id"
+			echo "Readarr variable found -> $readarr_download_id"
 			hash=$(echo "$readarr_download_id" | awk '{print tolower($0)}')
 		fi
 
