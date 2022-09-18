@@ -175,7 +175,24 @@ if [ -n "$categories" ]; then
 						if awk "BEGIN {exit !(${torrent_progress_array[$i]} < 1)}rent"; then
 							printf "Torrent incomplete, nothing to do -> %0.3g%%\n" $(awk -v var="${torrent_progress_array[$i]}" 'BEGIN{print var * 100}')
 						else
-							if [ "$(ls -l "${torrent_path_array[$i]}" | awk '{print $2}')" = "1" ]; then
+							if [ \( -d "${torrent_path_array[$i]}" \) ]; then # is a directory"
+								while IFS= read -r -d $'\0' h; do
+									if [ "$(ls -l "${h}" | awk '{print $2}')" = "1" ]; then
+										more_hard_links=false
+									else
+										more_hard_links=true
+										break
+									fi
+								done < <(find "${torrent_path_array[$i]}" -type f -print0)
+							else # is a file
+								if [ "$(ls -l "${torrent_path_array[$i]}" | awk '{print $2}')" = "1" ]; then
+									more_hard_links=false
+								else
+									more_hard_links=true
+								fi
+							fi
+
+							if [[ $more_hard_links == false ]]; then
 								echo "Found 1 hardlinks, checking seeding time:"
 								if [ ${torrent_seeding_time_array[$i]} -gt $min_seeding_time ]; then
 									echo "I can delete this torrent, seeding time more than $min_seeding_time seconds"
@@ -200,7 +217,24 @@ if [ -n "$categories" ]; then
 						if awk "BEGIN {exit !(${torrent_progress_array[$i]} < 1)}rent"; then
 							printf "Torrent incomplete, nothing to do -> %0.3g%%\n" $(awk -v var="${torrent_progress_array[$i]}" 'BEGIN{print var * 100}')
 						else
-							if [ "$(ls -l "${torrent_path_array[$i]}" | awk '{print $2}')" = "1" ]; then
+							if [ \( -d "${torrent_path_array[$i]}" \) ]; then # is a directory"
+								while IFS= read -r -d $'\0' h; do
+									if [ "$(ls -l "${h}" | awk '{print $2}')" = "1" ]; then
+										more_hard_links=false
+									else
+										more_hard_links=true
+										break
+									fi
+								done < <(find "${torrent_path_array[$i]}" -type f -print0)
+							else # is a file
+								if [ "$(ls -l "${torrent_path_array[$i]}" | awk '{print $2}')" = "1" ]; then
+									more_hard_links=false
+								else
+									more_hard_links=true
+								fi
+							fi
+
+							if [[ $more_hard_links == false ]]; then
 								echo "Found 1 hardlinks, checking seeding time:"
 								if [ ${torrent_seeding_time_array[$i]} -gt $min_seeding_time ]; then
 									echo "I can delete this torrent, seeding time more than $min_seeding_time seconds"
