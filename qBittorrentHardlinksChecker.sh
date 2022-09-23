@@ -24,6 +24,9 @@ private_torrents_check_orphan=true
 
 # If true, only for public torrent, check the trackers and the bad one will be eliminated, not the torrent only the trackers
 public_torrent_check_bad_trackers=true
+
+# If true, if there's some torrent in error, a force recheck is actuaded, this try to start again the torrent
+receck_erroring_torrent=true
 ########## CONFIGURATIONS ##########
 
 jq_executable="$(command -v jq)"
@@ -63,6 +66,14 @@ delete_torrent () {
 		--cookie - \
 		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/delete?hashes=${hash}&deleteFiles=true"
 	echo "Deleted"
+}
+
+recheck_torrent () {
+	hash="$1"
+	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		--cookie - \
+		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/recheck?hashes=${hash}"
+	echo "Command executed"
 }
 
 reannounce_torrent () {
@@ -144,6 +155,10 @@ done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .progress')
 while IFS= read -r line; do
 	torrent_category_array+=("$line")
 done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .category')
+
+while IFS= read -r line; do
+	torrent_state_array+=("$line")
+done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .state')
 
 for i in "${!torrent_hash_array[@]}"; do
 	torrent_trackers_array[$i]=$($curl_executable --silent --fail --show-error --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=${torrent_hash_array[$i]}")
@@ -296,5 +311,19 @@ if [[ $public_torrent_check_bad_trackers == true ]]; then
 		fi
 	done
 	echo "Bad trackers check completed"
+	echo "------------------------------"
+fi
+
+if [[ $receck_erroring_torrent == true ]]; then
+	echo "Checking for errored torrent:"
+
+	for i in "${!torrent_hash_array[@]}"; do
+		if [[ ${torrent_state_array[$i]} == "error" ]]; then
+			echo "Found erroring torrent -> ${torrent_name_array[$i]}, I'll recheck it"
+			recheck_torrent ${torrent_hash_array[$i]}
+			echo "------------------------------"
+		fi
+	done
+	echo "Error check completed"
 	echo "------------------------------"
 fi
