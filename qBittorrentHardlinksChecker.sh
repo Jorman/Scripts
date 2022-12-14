@@ -50,7 +50,7 @@ get_cookie () {
 	qbt_cookie=$($curl_executable --silent --fail --show-error \
 		--header "Referer: ${qbt_host}:${qbt_port}" \
 		--cookie-jar - \
-		--data 'username=${qbt_username}&password=${qbt_password}' ${qbt_host}:${qbt_port}/api/v2/auth/login)
+		--data "username=${qbt_username}&password=${qbt_password}" ${qbt_host}:${qbt_port}/api/v2/auth/login)
 }
 
 get_torrent_list () {
@@ -63,32 +63,36 @@ get_torrent_list () {
 delete_torrent () {
 	hash="$1"
 	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		-d "hashes=${hash}&deleteFiles=true" \
 		--cookie - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/delete?hashes=${hash}&deleteFiles=true"
+		--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/delete"
 	echo "Deleted"
 }
 
 recheck_torrent () {
 	hash="$1"
 	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		-d "hashes=${hash}" \
 		--cookie - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/recheck?hashes=${hash}"
+		--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/recheck"
 	echo "Command executed"
 }
 
 reannounce_torrent () {
 	hash="$1"
 	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		-d "hashes=${hash}" \
 		--cookie - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/reannounce?hashes=${hash}"
+		--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/reannounce"
 }
 
 remove_bad_tracker () {
 	hash="$1"
 	single_url="$2"
 	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		-d "hash=${hash}&urls=${single_url}" \
 		--cookie - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/removeTrackers?hash=${hash}&urls=${single_url}"
+		--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/removeTrackers"
 }
 
 unset_array () {
@@ -161,7 +165,9 @@ while IFS= read -r line; do
 done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .state')
 
 for i in "${!torrent_hash_array[@]}"; do
-	torrent_trackers_array[$i]=$($curl_executable --silent --fail --show-error --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=${torrent_hash_array[$i]}")
+	torrent_trackers_array[$i]=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		--cookie - \
+		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=${torrent_hash_array[$i]}")
 done
 
 for i in "${!torrent_hash_array[@]}"; do

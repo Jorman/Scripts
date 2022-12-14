@@ -122,9 +122,17 @@ inject_trackers () {
 	while read tracker; do
 		if [ -n "$tracker" ]; then
 			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
+			# echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+			# 		--cookie - \
+			# 		--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
+
+
 			echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
-					--cookie - \
-					--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
+				-d "hash=${1}&urls=${tracker}" \
+				--cookie - \
+				--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers"
+
+
 
 			if [ $? -eq 0 ]; then
 				echo -e " -> \e[32mSuccess! "
