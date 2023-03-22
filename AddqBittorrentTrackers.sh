@@ -9,6 +9,8 @@ qbt_port="8081"
 qbt_username="admin"
 # Password to access to Web UI
 qbt_password="adminadmin"
+# allow self-signed https (remember to put htps in qbt_host)
+self_signed=true
 
 # If true (lowercase) the script will inject trackers inside private torrent too (not a good idea)
 ignore_private=false
@@ -28,6 +30,11 @@ auto_tor_grab=0
 test_in_progress=0
 applytheforce=0
 all_torrent=0
+qbt_curl_arg=
+if [ "$self_signed" = true ]; then
+	qbt_curl_arg=--insecure
+fi
+
 
 if [[ -z $jq_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on jq. Aborting.\n\e[0m"
@@ -124,13 +131,13 @@ inject_trackers () {
 			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
 			# echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 			# 		--cookie - \
-			# 		--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
+			# 		--request POST $qbt_curl_arg "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
 
 
 			echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 				-d "hash=${1}&urls=${tracker}" \
 				--cookie - \
-				--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers"
+				--request POST $qbt_curl_arg "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers"
 
 
 
@@ -149,14 +156,14 @@ get_torrent_list () {
 	get_cookie
 	torrent_list=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 		--cookie - \
-		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/info")
+		--request GET $qbt_curl_arg "${qbt_host}:${qbt_port}/api/v2/torrents/info")
 }
 
 get_cookie () {
 	qbt_cookie=$($curl_executable --silent --fail --show-error \
 		--header "Referer: ${qbt_host}:${qbt_port}" \
 		--cookie-jar - \
-		--data "username=${qbt_username}&password=${qbt_password}" ${qbt_host}:${qbt_port}/api/v2/auth/login)
+		--data "username=${qbt_username}&password=${qbt_password}" $qbt_curl_arg ${qbt_host}:${qbt_port}/api/v2/auth/login)
 }
 
 hash_check() {
@@ -335,10 +342,10 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 				generate_trackers_list
 				inject_trackers ${torrent_hash_array[$i]}
 			else
-				private_check=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "${torrent_name_array[$i]}" '.[] | select(.name == "\($tosearch)") | .hash')" | $jq_executable --raw-output '.[0] | .msg | contains("private")')
+				private_check=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET $qbt_curl_arg "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "${torrent_name_array[$i]}" '.[] | select(.name == "\($tosearch)") | .hash')" | $jq_executable --raw-output '.[0] | .msg | contains("private")')
 
 				if [[ $private_check == true ]]; then
-					private_tracker_name=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "${torrent_name_array[$i]}" '.[] | select(.name == "\($tosearch)") | .hash')" | $jq_executable --raw-output '.[3] | .url' | sed -e 's/[^/]*\/\/\([^@]*@\)\?\([^:/]*\).*/\2/')
+					private_tracker_name=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET $qbt_curl_arg "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "${torrent_name_array[$i]}" '.[] | select(.name == "\($tosearch)") | .hash')" | $jq_executable --raw-output '.[3] | .url' | sed -e 's/[^/]*\/\/\([^@]*@\)\?\([^:/]*\).*/\2/')
 					echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $private_tracker_name <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 				else
 					echo -e "\e[0m\e[33mThe torrent is not private, I'll inject trackers on it\e[0m"
@@ -354,10 +361,10 @@ else # auto_tor_grab active, so some *Arr
 	wait 5
 	get_torrent_list
 
-	private_check=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$hash" | $jq_executable --raw-output '.[0] | .msg | contains("private")')
+	private_check=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET $qbt_curl_arg "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$hash" | $jq_executable --raw-output '.[0] | .msg | contains("private")')
 
 	if [[ $private_check == true ]]; then
-		private_tracker_name=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$hash" | $jq_executable --raw-output '.[3] | .url' | sed -e 's/[^/]*\/\/\([^@]*@\)\?\([^:/]*\).*/\2/')
+		private_tracker_name=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET $qbt_curl_arg "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=$hash" | $jq_executable --raw-output '.[3] | .url' | sed -e 's/[^/]*\/\/\([^@]*@\)\?\([^:/]*\).*/\2/')
 		echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $private_tracker_name <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 	else
 		echo -e "\e[0m\e[33mThe torrent is not private, I'll inject trackers on it\e[0m"
