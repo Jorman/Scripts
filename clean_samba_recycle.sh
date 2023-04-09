@@ -11,12 +11,12 @@
 # cron the script with something like 00 01 * * * clean_samba_recycle.sh
 
 # set vars
-recycle_dir1='/data/Download/.recycle'
-recycle_dir2='/data/Fanny/.recycle'
-recycle_dir3='/data/Jorman/.recycle'
-recycle_dir4='/data/Multimedia/.recycle'
-recycle_dir5='/data/Varie/.recycle'
-recycle_dir6='/data/Magia/.recycle'
+recycle_dir1='/dir1'
+recycle_dir2='/dir2'
+recycle_dir3='/dir3'
+recycle_dir4='/dir4'
+recycle_dir5='/dir5'
+recycle_dir6='/dir6'
 lastaccess_50_maxdays=50
 lastaccess_10_maxdays=10
 lastaccess_5_maxdays=5
