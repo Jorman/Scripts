@@ -125,14 +125,10 @@ inject_trackers () {
 			# echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 			# 		--cookie - \
 			# 		--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
-
-
 			echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 				-d "hash=${1}&urls=${tracker}" \
 				--cookie - \
 				--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers"
-
-
 
 			if [ $? -eq 0 ]; then
 				echo -e " -> \e[32mSuccess! "
@@ -181,7 +177,7 @@ wait() {
 }
 ########## FUNCTIONS ##########
 
-if [ -t 1 ] ; then
+if [ -t 1 ] || [[ "$PWD" == *qbittorrent* ]] ; then #Work in progress, this work with docker version, not sure if work with the normal version
 	if [[ ! $@ =~ ^\-.+ ]]; then
 		echo "Arguments must be passed with - in front, like -n foo. Check instructions"
 		echo ""
