@@ -291,7 +291,8 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .hash')
 	else
 		for i in "${tor_arg_names[@]}"; do
-			torrent_name_list=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$i" '.[] | select(.name|test("\($tosearch)";"i")) .name')
+			#torrent_name_list=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$i" '.[] | select(.name|test("\($tosearch)";"i")) .name')
+			torrent_name_list=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$i" '.[] | select(.name | ascii_downcase | contains($tosearch | ascii_downcase)) .name') #possible fix for ONIGURUMA regex libary
 
 			if [ -n "$torrent_name_list" ]; then # not empty
 				torrent_name_check=1
@@ -303,7 +304,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 			fi
 
 			if [ $torrent_name_check -eq 0 ]; then
-				echo -e "\e[0;31;1mI didn't find a torrent with the text: \e[21m$1\e[0m"
+				echo -e "\e[0;31;1mI didn't find a torrent with the text: \e[21m$i\e[0m"
 				shift
 				continue
 			else
