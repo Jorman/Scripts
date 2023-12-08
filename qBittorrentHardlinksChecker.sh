@@ -287,7 +287,7 @@ if [[ $private_torrents_check_orphan == true ]]; then
 	echo "Checking for orphan torrents:"
 
 	for i in "${!torrent_hash_array[@]}"; do
-		orphan_torrent=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 0) and ((.msg|test("unregistered"; "i")) or (.msg|test("not registered"; "i")))) | any')
+		orphan_torrent=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 1) and ((.msg|test("unregistered"; "i")) or (.msg|test("not registered"; "i")))) | any')
 		if [[ $orphan_torrent == true ]]; then
 			echo "Found orphan torrent -> ${torrent_name_array[$i]}, deleting"
 			delete_torrent ${torrent_hash_array[$i]}
@@ -304,7 +304,7 @@ if [[ $public_torrent_check_bad_trackers == true ]]; then
 
 	for i in "${!torrent_hash_array[@]}"; do
 		if [[ ${private_torrent_array[$i]} != true ]]; then
-			url_list=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 0)) .url')
+			url_list=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 1)) .url')
 
 			if [[ ! -z "$url_list" ]]; then
 				echo "Some problem found on -> ${torrent_name_array[$i]}"
