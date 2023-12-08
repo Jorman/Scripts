@@ -287,7 +287,7 @@ for i in "${tor_arg_names[@]}"; do
 	fi
 done
 
-if [ ${#tor_arg_names[@]} -eq 0 ] && [ ${#tor_arg_id[@]} -eq 0 ] && [ $all_torrent -eq 0 ] && [ -z $list ]; then
+if [ ${#tor_arg_names[@]} -eq 0 ] && [ ${#tor_arg_id[@]} -eq 0 ] && [ $all_torrent -eq 0 ] && [ -z $list ] && [ $auto_tor_grab -eq 0 ]; then
 	echo "No name, no ID or no -a passed, exiting"
 	exit
 fi
