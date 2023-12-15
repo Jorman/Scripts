@@ -13,6 +13,9 @@ qbt_password="adminadmin"
 # If true (lowercase) the script will inject trackers inside private torrent too (not a good idea)
 ignore_private=false
 
+# If true (lowercase) the script will remove all existing trackers before inject the new one, this functionality will works only for public trackers
+clean_existing_trackers=false
+
 # Configure here your trackers list
 declare -a live_trackers_list_urls=(
 	"https://newtrackon.com/api/stable"
@@ -40,6 +43,10 @@ if [[ -z $curl_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on curl. Aborting.\n\e[0m"
 	echo "You can install it with -> sudo apt install curl"
 	exit 2
+fi
+
+if [[ "${qbt_host,,}" == *"https"* ]] ;then
+	curl_executable="${curl_executable} --insecure"
 fi
 
 ########## FUNCTIONS ##########
@@ -118,13 +125,18 @@ EOL
 }
 
 inject_trackers () {
+	if [[ $clean_existing_trackers == true ]]; then
+		torrent_urls=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+				--cookie - \
+				--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=${1}" | $jq_executable --raw-output '.[] | .url' \
+				| tail -n +4 | tr '\n' '|' | rev | cut -c2- | rev)
+		remove_trackers $1 "$torrent_urls"
+	fi
+
 	start=1
 	while read tracker; do
 		if [ -n "$tracker" ]; then
 			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
-			# echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
-			# 		--cookie - \
-			# 		--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers" --data "hash=$1" --data "urls=$tracker"
 			echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 				-d "hash=${1}&urls=${tracker}" \
 				--cookie - \
@@ -166,6 +178,15 @@ hash_check() {
 	esac
 }
 
+remove_trackers () {
+	hash="$1"
+	single_url="$2"
+	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		-d "hash=${hash}&urls=${single_url}" \
+		--cookie - \
+		--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/removeTrackers"
+}
+
 wait() {
 	w=$1
 	echo "I'll wait ${w}s to be sure ..."
@@ -177,7 +198,7 @@ wait() {
 }
 ########## FUNCTIONS ##########
 
-if [ -t 1 ] || [[ "$PWD" == *qbittorrent* ]] ; then #Work in progress, this work with docker version, not sure if work with the normal version
+if [ -t 1 ] || [[ "$PWD" == *qbittorrent* ]] ; then
 	if [[ ! $@ =~ ^\-.+ ]]; then
 		echo "Arguments must be passed with - in front, like -n foo. Check instructions"
 		echo ""
@@ -192,10 +213,13 @@ if [ -t 1 ] || [[ "$PWD" == *qbittorrent* ]] ; then #Work in progress, this work
 		exit
 	fi
 
-	while getopts ":aflhn:" opt; do
+	while getopts ":acflhn:" opt; do
 		case ${opt} in
 			a ) # If used inject trackers to all torrent.
 				all_torrent=1
+				;;
+			c ) # If used remove all the existing trackers before injecting the new ones.
+				clean_existing_trackers=true
 				;;
 			f ) # If used force the injection also in private trackers.
 				applytheforce=1
@@ -220,6 +244,7 @@ if [ -t 1 ] || [[ "$PWD" == *qbittorrent* ]] ; then #Work in progress, this work
 			h | * ) # Display help.
 				echo "Usage:"
 				echo "$0 -a	Inject trackers to all torrent in qBittorrent, this not require any extra information"
+				echo "$0 -c	Clean all the existing trackers before the injection, this not require any extra information"
 				echo "$0 -f	Force the injection of the trackers inside the private torrent too, this not require any extra information"
 				echo "$0 -l	Print the list of the torrent where you can inject trackers, this not require any extra information"
 				echo "$0 -n	Specify the torrent name or part of it, for example -n foo or -n 'foo bar'"
@@ -291,7 +316,6 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .hash')
 	else
 		for i in "${tor_arg_names[@]}"; do
-			#torrent_name_list=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$i" '.[] | select(.name|test("\($tosearch)";"i")) .name')
 			torrent_name_list=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$i" '.[] | select(.name | ascii_downcase | contains($tosearch | ascii_downcase)) .name') #possible fix for ONIGURUMA regex libary
 
 			if [ -n "$torrent_name_list" ]; then # not empty
