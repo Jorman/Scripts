@@ -46,7 +46,7 @@ Transmission-remote is not needed anymore, I switch all the commands directly to
 I also included the possibility to call the script and specify name and/or id where add trackers
 
 * First make sure your Radarr/Sonarr user can execute the script with some like this:
-	`chown USER:USER AddTransmissionTrackers.sh` then be sue that is executable
+	`chown USER:USER AddTransmissionTrackers.sh` then ensure that it is executable
 	`chmod +x AddTransmissionTrackers.sh`
 * Modify the `########## CONFIGURATIONS ##########` section:
 	`transmission_username`, `transmission_password`, `transmission_host` and `transmission_port` are all Transmission related.
