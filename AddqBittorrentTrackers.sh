@@ -56,7 +56,7 @@ generate_trackers_list () {
 		tmp_trackers_list+=$'\n'
 	done
 
-	trackers_list=$(echo "$tmp_trackers_list" | awk '{for (i=1;i<=NF;i++) if (!a[$i]++) printf("%s%s",$i,FS)}{printf("\n")}' | xargs | tr ' ' '\n')
+	trackers_list=$(echo "$tmp_trackers_list" | tr ' ' '\n' | awk '{if ($0 && !a[$0]++) print($0 "\n")}')
 	if [[ $? -ne 0 ]]; then
 		echo "I can't download the list, I'll use a static one"
 cat >"${trackers_list}" <<'EOL'
@@ -125,7 +125,9 @@ EOL
 }
 
 inject_trackers () {
+	echo -ne "\e[0;36;1mInjecting... \e[0;36m"
 	if [[ $clean_existing_trackers == true ]]; then
+		echo -e " \e[32mBut before a quick cleaning the existing trackers... "
 		torrent_urls=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 				--cookie - \
 				--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=${1}" | $jq_executable --raw-output '.[] | .url' \
@@ -133,24 +135,15 @@ inject_trackers () {
 		remove_trackers $1 "$torrent_urls"
 	fi
 
-	start=1
-	while read tracker; do
-		if [ -n "$tracker" ]; then
-			echo -ne "\e[0;36;1m$start/$number_of_trackers_in_list - Adding tracker $tracker\e[0;36m"
-			echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
-				-d "hash=${1}&urls=${tracker}" \
-				--cookie - \
-				--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers"
+	# Merge tracker URLs separated by %0A.
+	urls=${trackers_list//$'\n'/%0A}
 
-			if [ $? -eq 0 ]; then
-				echo -e " -> \e[32mSuccess! "
-			else
-				echo -e " - \e[31m< Failed > "
-			fi
-		fi
-		start=$((start+1))
-	done <<< "$trackers_list"
-	echo "Done!"
+	echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		-d "hash=${1}&urls=$urls" \
+		--cookie - \
+		--request POST "${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers"
+
+	echo -e "\e[32mdone, injected $(( (number_of_trackers_in_list + 1) / 2 )) trackers!"
 }
 
 get_torrent_list () {
