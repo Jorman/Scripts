@@ -136,10 +136,10 @@ inject_trackers () {
 	fi
 
 	# Merge tracker URLs separated by %0A.
-	urls=$(printf "%s\n" "${trackers_list[@]}" | sed ':a;N;$!ba;s/\n/%0A/g')
+	urls=${trackers_list//$'\n'/%0A}
 
 	# Create the data string for the POST request.
-	data="hash=$hash&urls=$urls"
+	data="hash=${1}&urls=$urls"
 
 	# Execute HTTP POST request using curl
 	$curl_executable --silent --fail --show-error \
@@ -150,7 +150,7 @@ inject_trackers () {
 					--header "Content-Type: application/x-www-form-urlencoded" \
 					--data "$data" \
 					"${qbt_host}:${qbt_port}/api/v2/torrents/addTrackers"
-	echo -e "\e[32mDone!"
+	echo -e "\e[32mdone, injected $(( (number_of_trackers_in_list + 1) / 2 )) trackers!"
 }
 
 get_torrent_list () {
