@@ -45,7 +45,7 @@ if [[ -z $curl_executable ]]; then
 	exit 2
 fi
 
-if [[ "${qbt_host,,}" == *"https"* ]] ;then
+if [[ $qbt_host == "https://"* ]]; then
 	curl_executable="${curl_executable} --insecure"
 fi
 
