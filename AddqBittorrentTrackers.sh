@@ -131,8 +131,8 @@ inject_trackers () {
 		torrent_urls=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
 				--cookie - \
 				--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/trackers?hash=${1}" | $jq_executable --raw-output '.[] | .url' \
-				| tail -n +4 | tr '\n' '|' | rev | cut -c2- | rev)
-		remove_trackers $1 "$torrent_urls"
+				| tail -n +4 | tr '\n' '|')
+		remove_trackers $1 "${torrent_urls%?}"
 	fi
 
 	# Merge tracker URLs separated by %0A.
