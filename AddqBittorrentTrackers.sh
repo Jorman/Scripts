@@ -31,6 +31,7 @@ auto_tor_grab=0
 test_in_progress=0
 applytheforce=0
 all_torrent=0
+emptycategory=0
 
 if [[ -z $jq_executable ]]; then
 	echo -e "\n\e[0;91;1mFail on jq. Aborting.\n\e[0m"
@@ -206,7 +207,7 @@ if [ -t 1 ] || [[ "$PWD" == *qbittorrent* ]] ; then
 		exit
 	fi
 
-	while getopts ":acflhn:" opt; do
+	while getopts ":acflhn:s:" opt; do
 		case ${opt} in
 			a ) # If used inject trackers to all torrent.
 				all_torrent=1
@@ -226,6 +227,9 @@ if [ -t 1 ] || [[ "$PWD" == *qbittorrent* ]] ; then
 			n ) # Specify the name of the torrent example -n foo or -n "foo bar", multiple -n can be used.
 				tor_arg_names+=("$OPTARG")
 				;;
+			s ) # Specify the category of the torrent example -s foo or -s "foo bar", multiple -s can be used. If -s is passed without arguments, the "default" categories will be used
+				tor_categories+=("$OPTARG")
+				;;
 			: )
 				echo "Invalid option: -${OPTARG} requires an argument" 1>&2
 				exit 0
@@ -241,10 +245,14 @@ if [ -t 1 ] || [[ "$PWD" == *qbittorrent* ]] ; then
 				echo "$0 -f	Force the injection of the trackers inside the private torrent too, this not require any extra information"
 				echo "$0 -l	Print the list of the torrent where you can inject trackers, this not require any extra information"
 				echo "$0 -n	Specify the torrent name or part of it, for example -n foo or -n 'foo bar'"
+				echo "$0 -s	Specify the exact category name, for example -s foo or -s 'foo bar'. If -s is passed empty, \"\", the \"Uncategorized\" category will be used"
 				echo "$0 -h	Display this help"
+				echo ""
 				echo "NOTE:"
 				echo "It's possible to specify more than -n in one single command"
-				echo "Just remember that if you set -a in useless to add any extra -n, but -f can always be used"
+				echo "It's possible to specify more than -s in one single command"
+				echo "Is also possible use -n foo -s bar to select specific name in specific category"
+				echo "Just remember that if you set -a, is useless to add any extra arguments, like -n, but -f can always be used"
 				exit 2
 				;;
 		esac
@@ -278,7 +286,7 @@ else
 			echo "The download is not for a torrent client, I'll exit"
 			exit 3
 		fi
-		auto_tor_grab="1"
+		auto_tor_grab=1
 	fi
 
 	if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]] || [[ $lidarr_eventtype == "Test" ]] || [[ $readarr_eventtype == "Test" ]]; then
@@ -308,30 +316,101 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 			torrent_hash_array+=("$line")
 		done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .hash')
 	else
-		for i in "${tor_arg_names[@]}"; do
-			torrent_name_list=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$i" '.[] | select(.name | ascii_downcase | contains($tosearch | ascii_downcase)) .name') #possible fix for ONIGURUMA regex libary
+		if [[ ${#tor_arg_names[@]} -gt 0 && ${#tor_categories[@]} -gt 0 ]]; then
+			for name in "${tor_arg_names[@]}"; do
+				for category in "${tor_categories[@]}"; do
+					torrent_name_list=$(echo "$torrent_list" | $jq_executable --arg category "$category" --arg name "$name" --raw-output '.[] | select(.category | ascii_downcase == ($category | ascii_downcase)) | select(.name | ascii_downcase | contains($name | ascii_downcase)) | .name')
 
-			if [ -n "$torrent_name_list" ]; then # not empty
-				torrent_name_check=1
-				echo -e "\n\e[0;32;1mFor argument ### $i ###\e[0;32m"
-				echo -e "\e[0;32;1mI found the following torrent:\e[0;32m"
-				echo "$torrent_name_list"
-			else
-				torrent_name_check=0
-			fi
+					if [ -n "$torrent_name_list" ]; then # not empty
+						torrent_name_check=1
 
-			if [ $torrent_name_check -eq 0 ]; then
-				echo -e "\e[0;31;1mI didn't find a torrent with the text: \e[21m$i\e[0m"
-				shift
-				continue
-			else
-				while read -r single_found; do
-					torrent_name_array+=("$single_found")
-					hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "$single_found" '.[] | select(.name == "\($tosearch)") | .hash')
-					torrent_hash_array+=("$hash")
-				done <<< "$torrent_name_list"
-			fi
-		done
+						if [[ $category == "" ]]; then
+							echo -e "\n\e[0;32;1mFor the name ### $name ### in category ### Uncategorized ###\e[0;32m"
+						else
+							echo -e "\n\e[0;32;1mFor the name ### $name ### in category ### $category ###\e[0;32m"
+						fi
+
+						echo -e "\e[0;32;1mI found the following torrent(s):\e[0;32m"
+						echo "$torrent_name_list"
+					else
+						torrent_name_check=0
+					fi
+
+					if [ $torrent_name_check -eq 0 ]; then
+						if [[ $category == "" ]]; then
+							echo -e "\n\e[0;31;1mI didn't find a torrent with name ### $name ### in category ### Uncategorized ###\e[0m"
+						else
+							echo -e "\n\e[0;31;1mI didn't find a torrent with name ### $name ### in category ### $category ###\e[0m"
+						fi
+
+						shift
+						continue
+					else
+						while read -r single_found; do
+							torrent_name_array+=("$single_found")
+							hash=$(echo "$torrent_list" | $jq_executable --arg single "$single_found" --raw-output '.[] | select(.name == "\($single)") | .hash')
+							torrent_hash_array+=("$hash")
+						done <<< "$torrent_name_list"
+					fi
+				done
+			done
+		elif [[ ${#tor_arg_names[@]} -gt 0 ]]; then
+			for name in "${tor_arg_names[@]}"; do
+				torrent_name_list=$(echo "$torrent_list" | $jq_executable --arg name "$name" --raw-output '.[] | select(.name | ascii_downcase | contains($name | ascii_downcase)) | .name') #possible fix for ONIGURUMA regex libary
+
+				if [ -n "$torrent_name_list" ]; then # not empty
+					torrent_name_check=1
+					echo -e "\n\e[0;32;1mFor the name ### $name ###\e[0;32m"
+					echo -e "\e[0;32;1mI found the following torrent(s):\e[0;32m"
+					echo "$torrent_name_list"
+				else
+					torrent_name_check=0
+				fi
+
+				if [ $torrent_name_check -eq 0 ]; then
+					echo -e "\n\e[0;31;1mI didn't find a torrent with this part of the text: \e[21m$name\e[0m"
+					shift
+					continue
+				else
+					while read -r single_found; do
+						torrent_name_array+=("$single_found")
+						hash=$(echo "$torrent_list" | $jq_executable --arg single "$single_found" --raw-output '.[] | select(.name == "\($single)") | .hash')
+						torrent_hash_array+=("$hash")
+					done <<< "$torrent_name_list"
+				fi
+			done
+		else
+			for category in "${tor_categories[@]}"; do
+				torrent_name_list=$(echo "$torrent_list" | $jq_executable --arg category "$category" --raw-output '.[] | select(.category | ascii_downcase == ($category | ascii_downcase)) | .name')
+
+				if [ -n "$torrent_name_list" ]; then # not empty
+					torrent_name_check=1
+
+					if [[ $category == "" ]]; then
+						echo -e "\n\e[0;32;1mFor category ### Uncategorized ###\e[0;32m"
+					else
+						echo -e "\n\e[0;32;1mFor category ### $category ###\e[0;32m"
+					fi
+
+					echo -e "\e[0;32;1mI found the following torrent(s):\e[0;32m"
+					echo "$torrent_name_list"
+				else
+					torrent_name_check=0
+				fi
+
+				if [ $torrent_name_check -eq 0 ]; then
+					echo -e "\n\e[0;31;1mI didn't find a torrent in the category: \e[21m$category\e[0m"
+					shift
+					continue
+				else
+					while read -r single_found; do
+						torrent_name_array+=("$single_found")
+						hash=$(echo "$torrent_list" | $jq_executable --arg single "$single_found" --raw-output '.[] | select(.name == "\($single)") | .hash')
+						torrent_hash_array+=("$hash")
+					done <<< "$torrent_name_list"
+				fi
+			done
+		fi
 	fi
 
 	if [ ${#torrent_name_array[@]} -gt 0 ]; then
