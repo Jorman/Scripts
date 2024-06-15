@@ -18,7 +18,7 @@ To use this script you'll need:
   
 * Modify the scripts `########## CONFIGURATIONS ##########` section:
    * `qbt_username` -> username to access to qBittorrent Web UI.
-   * `qbt_password` -> username to access to qBittorrent Web UI.
+   * `qbt_password` -> password to access to qBittorrent Web UI. **Password MUST BE url encoded**, otherwise any special characters will break the curl request.
    *  Note that if the script runs on the same device that runs qBittorrent, you can set `Bypass authentication for clients on localhost`. With this option set and when the script runs, the username and password are not required.
    * `qbt_host` -> if the script is on the same device as qBittorrent `http://localhost`, otherwise, set this to the remote device.
    * `qbt_port` -> is the Web UI port.
@@ -30,7 +30,7 @@ Configuration is now complete.
 
 If you are a **Radarr and/or Sonarr user**, personally I:
 1. Create a custom script (settings -> connect -> add notification -> Custom Script).
-2. The name is not important. I use Add Transmission Trackers, you can use any name you like.
+2. The name is not important. I use Add qBitTorrent Trackers, you can use any name you like.
 3. Set "On Grab".
 4. Inside Path field, point to the `AddqBittorrentTrackers.sh` script.
 5. Save the custom script.
