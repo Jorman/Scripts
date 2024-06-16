@@ -41,66 +41,49 @@ To run the script manually, simply run `./AddqBittorrentTrackers.sh`. All the po
 
 One note about configuration, if you want to use it manually, you must configure the username, password, host and port within the file. This is for simplicity. Otherwise I would have to insert four new options to be called every time manually, or "complicate" the script by checking for the possibility of a configuration file to be saved somewhere. If it is necessary I will do it, but for now I think it is easier to keep the necessary options hard coded.
 
+
+
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # AddTransmissionTrackers.sh
 
-The purpose of this script is to inject trackers inside **Transmission torrent**.
+The purpose of this script is to inject trakers inside the **Transmission torrent**
 
-This may be used manually, or with Radarr/Sonarr automatically.
+This can be used manually, or with Radarr/Sonarr automatically. To run the script manually, simply run the script `./AddTransmissionTrackers.sh` and see all the possible options.
 
-Included is the option to call the script and specify name and/or id where add trackers.
+When Radarr and/or Sonarr grabs a new torrent *and if the torrent is not from a private tracker*, the script is triggered and the custom tracker list populated to the torrent.
+
+In the latest version, I've inserted a new way to call the script, with many options to inject trackers inside torrents.
+
+N.B for those updating to the latest script, `Transmission-remote` is no longer needed. All commands have been switched to directly use `/rpc`. This is the very first release with this method.
+
+
+
+I've also included the possibility to call the script and specify the name and/or ID where one adds trackers:
 
 * First ensure your Radarr/Sonarr user can execute the script with something like this:
    * Take ownership with: `chown USER:USER AddTransmissionTrackers.sh` where `USER:GROUP` is the same user and group as Transmission.
    * Ensure it is executable: `chmod +x AddTransmissionTrackers.sh`
 
 * Modify the scripts `########## CONFIGURATIONS ##########` section:
-   * `transmission_username`, `transmission_password`, `transmission_host` and `transmission_port` are the settings you've already set in Transmission.
-   * `live_trackers_list_url`, is the url from which the trackers lists are obtained. You may specify more than one url, just follow the example in the file.
+   * `transmission_username`, `transmission_password`, `transmission_host` and `transmission_port`. These are all the same as your Transmission config.
+   * `live_trackers_list_url`, is the URL where the trackers list is obtained. This is the default list. You may specify more than one URL, just follow the example in the file.
    * The script will automatically check if the torrent is private or public.
 
 The configuration is complete.
 
 
 If you are a **Radarr and/or Sonarr user**, personally I:
-1. Create a custom script (settings -> connect -> add notification -> Custom Script).
-2. The name is not important. I use Add Transmission Trackers, you can use any name you like.
-3. Set "On Grab".
-4. Inside Path field, point to the `AddTransmissionTrackers.sh` script.
-5. Save the custom script.
+   1. Create a custom script (settings -> connect -> add notification -> Custom Script).
+   2. The name is not important. I use Add Transmission Trackers, you can use any name you like.
+   3. Set "On Grab".
+   4. Inside Path field, point to the `AddTransmissionTrackers.sh` script.
+   5. Save the custom script.
 
-Now, when _Radarr and/or Sonarr_ grabs a new torrent, the script will automatically be triggered and a custom tracker list will be added to the torrent. This is true only if the torrent is not from a private tracker.
 
-To run the script manually, simply run `./AddTransmissionTrackers.sh`. All the possible options will be shown. Additionally, when calling the script, there are many options to add trackers to torrents.
 
-One note about configuration, if you want to use it manually, you must configure the username, password, host and port within the file. This is for simplicity. Otherwise I would have to insert four new options to be called every time manually, or "complicate" the script by checking for the possibility of a configuration file to be saved somewhere. If it is necessary I will do it, but for now I think it is easier to keep only the necessary options hard coded.
+One note about configuration and using the script manually. Before use you MUST configure the username, password, host and port within the script. Otherwise I would have to insert four new options to be called every time for manual user input, or "complicate" it by having a configuration file saved somewhere. If it's necessary I will do it, but for now I think it is easier to keep only the necessary options.
 
-=======
-The purpose of this script is to inject trakers inside Transmission torrent, this can be used manually and can also works with Radarr/Sonarr in an automatic way.
 
-~~This script use transmission-remote, normally this is already installed if you use transmission.~~
-Transmission-remote is not needed anymore, I switch all the commands directly to /rpc so this's the very first release.
-I also included the possibility to call the script and specify name and/or id where add trackers
-
-* First make sure your Radarr/Sonarr user can execute the script with some like this:
-	`chown USER:USER AddTransmissionTrackers.sh` then ensure that it is executable
-	`chmod +x AddTransmissionTrackers.sh`
-* Modify the `########## CONFIGURATIONS ##########` section:
-	`transmission_username`, `transmission_password`, `transmission_host` and `transmission_port` are all Transmission related.
-	~~`private_tracker_list` is a comma-separated list of your "private" trackers.
-	Actually you've to manually set your private trackers list because is not yet possible get the status from the torrent automatically, maybe one day it will be possible.~~ -> No more needed, the script will check if the torrent is private or not automatically
-	`live_trackers_list_url`, is the url where the trackers list are taken, is an automatic list, you can specify more than one url, just follow the example in the file.
-* Now the configuration is done, you've to configure Radarr and/or Sonarr, personally I:
-1. Create a custom script (settings -> connect -> add notification -> Custom Script)
-2. The name is not important, I use Add Transmission Trackers, you can use any name you like
-3. Set "On Grab"
-4. Inside Path field, point to the `AddTransmissionTrackers.sh` script
-5. Save the custom script
-
-Now, when Radarr and/or Sonarr will grab a new torrent, the script will be triggered and a custom tracker list will be added to the torrent, automatically, if the torrent is not from a private tracker.
-Is also possible to run the script manually, simply run the script `./AddTransmissionTrackers.sh` and see all the possible options.
-I inserted a new way to call the script, with many options to inject trackers inside torrents.
-One note abount configuration, if you want to use it manually, before use it configure username, passowrd, host and port inside the file. Otherwise I would have to insert four new options to be called every time manually, or "complicate" it by inserting possibility to have a configuration file to be saved somewhere. If it is necessary I will do it but for now I think it is easier to keep only the necessary options.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # TransmissionRemoveCompleteTorrent.sh
@@ -132,6 +115,8 @@ This script uses `transmission-remote`, normally this is already installed if yo
 * Lastly, consider using cron for the script. Add this to your cron scheduler with something like this (varies according to your own Linux installs cron manager):
    * `30 01 * * * /PATHOFTHESCRIPT/TransmissionRemoveCompleteTorrent.sh >/dev/null 2>&1`
    * this example will execute the script at 01:30 every day.
+
+
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # qBittorrentHardlinksChecker.sh
