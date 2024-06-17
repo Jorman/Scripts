@@ -17,7 +17,7 @@ This script injects trakers inside the **Transmission torrent**
 
 
 ### TransmissionRemoveCompleteTorrent.sh
-This script removes completed torrents. It uses `transmission-remote`. Normally this is already installed if you use transmission.
+This script removes completed torrents.
 
 
 ### qBittorrentHardlinksChecker.sh
@@ -28,8 +28,11 @@ This script checks qBittorrents Hard Links.
 
 Please star this project - if you find a problem, please do report it.
 
-While the scripts do not change often, the project is regualrly reviewed.  The world of 
+While the scripts do not change often, the project is regualrly reviewed.  The world of Torrenting is well established, but tweaks, tricks and usage evolves.
+
+As things evolve, these scripts will be updated.  If you would like to add, suggest ideas or propose new methods, please do open either an Issue or pop me a message.
+
 
 
 # TODO
-Make some good expalation on how to use these scripts
+Make some good expalation on how to use these scripts - see the Wiki (top)
