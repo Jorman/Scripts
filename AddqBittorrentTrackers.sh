@@ -50,6 +50,8 @@ if [[ $qbt_host == "https://"* ]]; then
 	curl_executable="${curl_executable} --insecure"
 fi
 
+version="v3.14"
+
 ########## FUNCTIONS ##########
 generate_trackers_list () {
 	for j in "${live_trackers_list_urls[@]}"; do
