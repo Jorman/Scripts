@@ -321,10 +321,6 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 		while IFS= read -r line; do
 			torrent_hash_array+=("$line")
 		done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .hash')
-
-		while IFS= read -r line; do
-			torrent_private_status_array+=("$line")
-		done < <(echo $torrent_list | $jq_executable --raw-output '.[] | .hash')
 	else
 		if [[ ${#tor_arg_names[@]} -gt 0 && ${#tor_categories[@]} -gt 0 ]]; then
 			for name in "${tor_arg_names[@]}"; do
