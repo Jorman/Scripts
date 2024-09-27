@@ -9,6 +9,9 @@ qbt_port="8081"
 qbt_username="admin"
 # Password to access to Web UI
 qbt_password="adminadmin"
+# note: complicated passwords need to be URL encoded.
+# If you are getting this error: "curl: (22) The requested URL returned error: 403" then you likely need to do this
+# you can run this command to get your password URL encoded: jq -rn --arg x 'complicated password' '$x|@uri'
 
 # If true (lowercase) the script will inject trackers inside private torrent too (not a good idea)
 ignore_private=false
