@@ -16,6 +16,13 @@ categories='Serie_Tv,Film'
 # Minimum seed time before deletion, expressed in seconds, for example 864000 means 10 days
 min_seeding_time=864000
 
+# Using docker it may happen that the path is different from the real one, this allows to replace part of qBittorrent path, turning it into the real one
+# In this example, if a download within qBittorren has /oldpath/film as its path, the script will interpret it as /new/path/film
+# This allows volumes within qBittorrent to be mounted differently from the actual path on disk
+# Leave empty if not needed
+virtual_path="oldpath" # The qBittorrent path, or the part you want to change
+real_path="new/path" # The new part of the path
+
 # Check only private torrents? if not true (lowercase) will check all torrents in given categories not only the private one
 only_private=true
 
@@ -45,12 +52,47 @@ if [[ -z $curl_executable ]]; then
 	exit 2
 fi
 
+if [[ "${qbt_host,,}" == *"https"* ]] ;then
+	curl_executable="${curl_executable} --insecure"
+fi
+
+# Variable to keep track of dryrun mode
+dryrun=false
+
+if [ "$1" == "test" ]; then
+	dryrun=true
+	echo "Dryrun mode turned on."
+	echo ""
+fi
+
 ########## FUNCTIONS ##########
+url_encode() {
+  local string="${1}"
+
+  # Check if xxd is available
+  if command -v xxd >/dev/null 2>&1; then
+    # If xxd is available, use xxd for encoding
+    printf '%s' "$string" | xxd -p | sed 's/\(..\)/%\1/g' | tr -d '\n'
+  else
+    # If jq is available, use jq for encoding
+    jq -nr --arg s "$string" '$s|@uri'
+  fi
+}
+
 get_cookie () {
+	encoded_username=$(url_encode "$qbt_username")
+	encoded_password=$(url_encode "$qbt_password")
+
+	# If encoding fails, exit the function
+	if [ $? -ne 0 ]; then
+		echo "Error during URL encoding" >&2
+		return 1
+	fi
+
 	qbt_cookie=$($curl_executable --silent --fail --show-error \
 		--header "Referer: ${qbt_host}:${qbt_port}" \
 		--cookie-jar - \
-		--data "username=${qbt_username}&password=${qbt_password}" ${qbt_host}:${qbt_port}/api/v2/auth/login)
+		--data "username=${encoded_username}&password=${encoded_password}" ${qbt_host}:${qbt_port}/api/v2/auth/login)
 }
 
 get_torrent_list () {
@@ -116,6 +158,28 @@ wait() {
 		w=$((w-1))
 	done
 }
+
+check_hardlinks() {
+	local path="$1"
+	local more_hard_links=false
+
+	if [ -d "$path" ]; then
+		# È una directory, controlla i file all'interno
+		while IFS= read -r -d $'\0' file; do
+			if [ "$(stat -c %h "$file")" -gt 1 ]; then
+				more_hard_links=true
+				break
+			fi
+		done < <(find "$path" -type f -print0)
+	else
+		# È un file
+		if [ "$(stat -c %h "$path")" -gt 1 ]; then
+			more_hard_links=true
+		fi
+	fi
+
+	echo "$more_hard_links"
+}
 ########## FUNCTIONS ##########
 
 get_torrent_list
@@ -171,7 +235,9 @@ for i in "${!torrent_hash_array[@]}"; do
 done
 
 for i in "${!torrent_hash_array[@]}"; do
-	private_torrent_array[$i]=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[0] | .msg | contains("private")')
+	private_torrent_array[$i]=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error \
+		--cookie - \
+		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/properties?hash=${torrent_hash_array[$i]}" | $jq_executable --raw-output '.is_private')
 done
 
 if [ -n "$categories" ]; then
@@ -196,21 +262,19 @@ if [ -n "$categories" ]; then
 						if awk "BEGIN {exit !(${torrent_progress_array[$i]} < 1)}rent"; then
 							printf "Torrent incomplete, nothing to do -> %0.3g%%\n" $(awk -v var="${torrent_progress_array[$i]}" 'BEGIN{print var * 100}')
 						else
-							if [ \( -d "${torrent_path_array[$i]}" \) ]; then # is a directory"
-								while IFS= read -r -d $'\0' h; do
-									if [ "$(ls -l "${h}" | awk '{print $2}')" = "1" ]; then
-										more_hard_links=false
-									else
-										more_hard_links=true
-										break
-									fi
-								done < <(find "${torrent_path_array[$i]}" -type f -print0)
-							else # is a file
-								if [ "$(ls -l "${torrent_path_array[$i]}" | awk '{print $2}')" = "1" ]; then
-									more_hard_links=false
-								else
-									more_hard_links=true
-								fi
+
+							if [ -z "$virtual_path" ] || [ -z "$real_path" ]; then
+								result="${torrent_path_array[$i]}"
+							else
+								result=$(echo "${torrent_path_array[$i]/$virtual_path/"$real_path"}")
+							fi
+
+							more_hard_links=$(check_hardlinks "$result")
+
+							if [ "$more_hard_links" = true ]; then
+								echo "More than 1 hardlinks found in $result"
+							else
+								echo "No additional hardlinks found in $result"
 							fi
 
 							if [[ $more_hard_links == false ]]; then
@@ -218,10 +282,19 @@ if [ -n "$categories" ]; then
 								if [ ${torrent_seeding_time_array[$i]} -gt $min_seeding_time ]; then
 									echo "I can delete this torrent, seeding time more than $min_seeding_time seconds"
 
-									reannounce_torrent ${torrent_hash_array[$i]}
-									wait 15
-									delete_torrent ${torrent_hash_array[$i]}
-									unset_array $i
+									if [[ $dryrun == true ]]; then
+										echo "Simulation (dryrun)..."
+										echo "reannounce torrent"
+										echo "wait 15 seconds..."
+										echo "delete torrent ${torrent_name_array[$i]}"
+										unset_array $i
+									else
+										reannounce_torrent ${torrent_hash_array[$i]}
+										wait 15
+										delete_torrent ${torrent_hash_array[$i]}
+										unset_array $i
+									fi
+
 								else
 									echo "I can't delete this torrent, seeding time not meet -> ${torrent_seeding_time_array[$i]}/${min_seeding_time}"
 								fi
@@ -238,31 +311,38 @@ if [ -n "$categories" ]; then
 						if awk "BEGIN {exit !(${torrent_progress_array[$i]} < 1)}rent"; then
 							printf "Torrent incomplete, nothing to do -> %0.3g%%\n" $(awk -v var="${torrent_progress_array[$i]}" 'BEGIN{print var * 100}')
 						else
-							if [ \( -d "${torrent_path_array[$i]}" \) ]; then # is a directory"
-								while IFS= read -r -d $'\0' h; do
-									if [ "$(ls -l "${h}" | awk '{print $2}')" = "1" ]; then
-										more_hard_links=false
-									else
-										more_hard_links=true
-										break
-									fi
-								done < <(find "${torrent_path_array[$i]}" -type f -print0)
-							else # is a file
-								if [ "$(ls -l "${torrent_path_array[$i]}" | awk '{print $2}')" = "1" ]; then
-									more_hard_links=false
-								else
-									more_hard_links=true
-								fi
+
+							if [ -z "$virtual_path" ] || [ -z "$real_path" ]; then
+								result="${torrent_path_array[$i]}"
+							else
+								result=$(echo "${torrent_path_array[$i]/$virtual_path/"$real_path"}")
+							fi
+
+							more_hard_links=$(check_hardlinks "$result")
+
+							if [ "$more_hard_links" = true ]; then
+								echo "More than 1 hardlinks found in $result"
+							else
+								echo "No additional hardlinks found in $result"
 							fi
 
 							if [[ $more_hard_links == false ]]; then
 								echo "Found 1 hardlinks, checking seeding time:"
 								if [ ${torrent_seeding_time_array[$i]} -gt $min_seeding_time ]; then
 									echo "I can delete this torrent, seeding time more than $min_seeding_time seconds"
-									reannounce_torrent ${torrent_hash_array[$i]}
-									wait 15
-									delete_torrent ${torrent_hash_array[$i]}
-									unset_array $i
+
+									if [[ $dryrun == true ]]; then
+										echo "Simulation (dryrun)..."
+										echo "reannounce torrent"
+										echo "wait 15 seconds..."
+										echo "delete torrent ${torrent_name_array[$i]}"
+										unset_array $i
+									else
+										reannounce_torrent ${torrent_hash_array[$i]}
+										wait 15
+										delete_torrent ${torrent_hash_array[$i]}
+										unset_array $i
+									fi
 								else
 									echo "I can't delete this torrent, seeding time not meet -> ${torrent_seeding_time_array[$i]}/${min_seeding_time}"
 								fi
@@ -290,8 +370,16 @@ if [[ $private_torrents_check_orphan == true ]]; then
 		orphan_torrent=$(echo ${torrent_trackers_array[$i]} | $jq_executable --raw-output '.[] | select((.status == 4) and (.num_peers < 1) and ((.msg|test("unregistered"; "i")) or (.msg|test("not registered"; "i")))) | any')
 		if [[ $orphan_torrent == true ]]; then
 			echo "Found orphan torrent -> ${torrent_name_array[$i]}, deleting"
-			delete_torrent ${torrent_hash_array[$i]}
-			unset_array $i
+
+			if [[ $dryrun == true ]]; then
+				echo "Simulation (dryrun)..."
+				echo "delete torrent ${torrent_name_array[$i]}"
+				unset_array $i
+			else
+				delete_torrent ${torrent_hash_array[$i]}
+				unset_array $i
+			fi
+
 			echo "------------------------------"
 		fi
 	done
@@ -309,7 +397,14 @@ if [[ $public_torrent_check_bad_trackers == true ]]; then
 			if [[ ! -z "$url_list" ]]; then
 				echo "Some problem found on -> ${torrent_name_array[$i]}"
 				echo "fixing..."
-				remove_bad_tracker ${torrent_hash_array[$i]} $(echo $url_list | tr '\n' ' ' | tr ' ' '|' | rev | cut -c2- | rev)
+
+				if [[ $dryrun == true ]]; then
+					echo "Simulation (dryrun)..."
+					echo "removing bad tracker for torrent ${torrent_name_array[$i]}"
+				else
+					remove_bad_tracker ${torrent_hash_array[$i]} $(echo $url_list | tr '\n' ' ' | tr ' ' '|' | rev | cut -c2- | rev)
+				fi
+
 				echo "------------------------------"
 			else
 				continue
@@ -326,7 +421,14 @@ if [[ $receck_erroring_torrent == true ]]; then
 	for i in "${!torrent_hash_array[@]}"; do
 		if [[ ${torrent_state_array[$i]} == "error" ]]; then
 			echo "Found erroring torrent -> ${torrent_name_array[$i]}, I'll recheck it"
-			recheck_torrent ${torrent_hash_array[$i]}
+
+			if [[ $dryrun == true ]]; then
+				echo "Simulation (dryrun)..."
+				echo "checking torrent ${torrent_name_array[$i]}"
+			else
+				recheck_torrent ${torrent_hash_array[$i]}
+			fi
+
 			echo "------------------------------"
 		fi
 	done

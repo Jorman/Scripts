@@ -50,7 +50,7 @@ if [[ $qbt_host == "https://"* ]]; then
 	curl_executable="${curl_executable} --insecure"
 fi
 
-version="v3.14"
+version="v3.15"
 
 ########## FUNCTIONS ##########
 generate_trackers_list () {
@@ -162,11 +162,33 @@ get_torrent_list () {
 		--request GET "${qbt_host}:${qbt_port}/api/v2/torrents/info")
 }
 
+url_encode() {
+  local string="${1}"
+
+  # Check if xxd is available
+  if command -v xxd >/dev/null 2>&1; then
+    # If xxd is available, use xxd for encoding
+    printf '%s' "$string" | xxd -p | sed 's/\(..\)/%\1/g' | tr -d '\n'
+  else
+    # If jq is available, use jq for encoding
+    jq -nr --arg s "$string" '$s|@uri'
+  fi
+}
+
 get_cookie () {
+	encoded_username=$(url_encode "$qbt_username")
+	encoded_password=$(url_encode "$qbt_password")
+
+	# If encoding fails, exit the function
+	if [ $? -ne 0 ]; then
+		echo "Error during URL encoding" >&2
+		return 1
+	fi
+
 	qbt_cookie=$($curl_executable --silent --fail --show-error \
 		--header "Referer: ${qbt_host}:${qbt_port}" \
 		--cookie-jar - \
-		--data "username=${qbt_username}&password=${qbt_password}" ${qbt_host}:${qbt_port}/api/v2/auth/login)
+		--data "username=${encoded_username}&password=${encoded_password}" ${qbt_host}:${qbt_port}/api/v2/auth/login)
 }
 
 hash_check() {
