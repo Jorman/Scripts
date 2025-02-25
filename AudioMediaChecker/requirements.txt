@@ -1,0 +1,7 @@
+faster-whisper
+mutagen
+pydub
+ffmpeg-python
+pycountry
+psutil
+tqdm

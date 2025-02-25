@@ -1,0 +1,7 @@
+services:
+  audio-media-checker:
+    build: .
+    container_name: audio_processor_container
+    image: audio-media-checker:latest
+    volumes:
+      - /path_to_yout_data:/data
