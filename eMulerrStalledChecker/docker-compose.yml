@@ -1,0 +1,32 @@
+services:
+  emulerr-stalled-checker:
+    build: .
+    container_name: emulerr-stalled-checker
+    environment:
+      - CHECK_INTERVAL=10 # in minutes
+      - EMULERR_HOST=http://10.0.0.100:3000
+      - STALL_CHECKS=30 # number of checks before marking as stalled
+      - STALL_DAYS=20 # days if the download has been never seen completed
+      - RECENT_DOWNLOAD_GRACE_PERIOD=30 # how many minutes wait before checking if the download, apply only if the download is recent
+      - DELETE_IF_UNMONITORED_SERIE=false # delete if the serie is not monitored
+      - DELETE_IF_UNMONITORED_SEASON=false # delete if the season is not monitored
+      - DELETE_IF_UNMONITORED_EPISODE=true # delete if the episode is not monitored
+      - DELETE_IF_ONLY_ON_EMULERR=false # delete if the download is only on eMulerr but not inside *Arr, apply only for downloads with *Arr eMulerr category
+      - PUSHOVER_USER_KEY=***
+      - PUSHOVER_APP_TOKEN=***
+      - LOG_LEVEL=info # or debug, warning, error, critical
+      - LOG_TO_FILE=/path/to/logfile # optional, by default no log file is created, if set, the file will be created in the path specified, note volume must be mounted to the path
+      - DRY_RUN=false
+      - DOWNLOAD_CLIENT=emulerr # name of the download client inside *Arr
+      - RADARR_HOST=http://10.0.0.100:7878
+      - RADARR_API_KEY=***
+      - RADARR_CATEGORY=radarr-eMulerr # Radarr category for eMulerr
+      - SONARR_HOST=http://10.0.0.100:8989
+      - SONARR_API_KEY=***
+      - SONARR_CATEGORY=tv-sonarr-eMulerr # Sonarr category for eMulerr
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://10.0.0.100:3000"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
