@@ -41,19 +41,10 @@ live_trackers_list_urls = [
     "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt",
 ]
 
-version = "v1.0"
+version = "v1.1"
 
-########## FUNCTIONS ##########
-def generate_trackers_list():
-    trackers_list = ""
-    for url in live_trackers_list_urls:
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            trackers_list += response.text + "\n"
-        except requests.RequestException:
-            print("I can't download the list, I'll use a static one")
-            trackers_list = """udp://tracker.coppersurfer.tk:6969/announce
+STATIC_TRACKERS_LIST = """
+udp://tracker.coppersurfer.tk:6969/announce
 http://tracker.internetwarriors.net:1337/announce
 udp://tracker.internetwarriors.net:1337/announce
 udp://tracker.opentrackr.org:1337/announce
@@ -113,7 +104,31 @@ http://retracker.mgts.by:80/announce
 http://peersteers.org:80/announce
 http://fxtt.ru:80/announce
 """
-            break
+
+########## FUNCTIONS ##########
+def generate_trackers_list():
+    # If the URL list is empty, use the static list and return
+    if not live_trackers_list_urls or len(live_trackers_list_urls) == 0:
+        print("The URL list is empty. Using the static tracker list.")
+        return STATIC_TRACKERS_LIST.strip().split("\n")
+
+    trackers_list = ""
+    errors_count = 0  # Count how many URLs returned error
+
+    # Itera sugli URL e prova a scaricare i tracker
+    for url in live_trackers_list_urls:
+        try:
+            response = requests.get(url)
+            response.raise_for_status()  # Check for HTTP errors
+            trackers_list += response.text + "\n"  # Add content to the list
+        except requests.RequestException as e:
+            errors_count += 1
+            print(f"Error downloading from {url}: {e}")  # Error log for individual URL
+
+    # If all URLs failed, use static list as fallback
+    if errors_count == len(live_trackers_list_urls):
+        print("All URLs failed. Using the static tracker list.")
+        return STATIC_TRACKERS_LIST.strip().split("\n")
 
     return trackers_list.strip().split("\n")
 
