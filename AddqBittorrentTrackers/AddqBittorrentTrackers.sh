@@ -50,18 +50,10 @@ if [[ $qbt_host == "https://"* ]]; then
 	curl_executable="${curl_executable} --insecure"
 fi
 
-version="v3.15"
+version="v3.16"
 
-########## FUNCTIONS ##########
-generate_trackers_list () {
-	for j in "${live_trackers_list_urls[@]}"; do
-		trackers_list+=$($curl_executable -sS $j)
-		trackers_list+=$'\n'
-	done
-
-	if [[ $? -ne 0 ]]; then
-		echo "I can't download the list, I'll use a static one"
-cat >"${trackers_list}" <<'EOL'
+STATIC_TRACKERS_LIST=$(
+    cat <<'EOL'
 udp://tracker.coppersurfer.tk:6969/announce
 http://tracker.internetwarriors.net:1337/announce
 udp://tracker.internetwarriors.net:1337/announce
@@ -122,7 +114,40 @@ http://retracker.mgts.by:80/announce
 http://peersteers.org:80/announce
 http://fxtt.ru:80/announce
 EOL
-	fi
+)
+
+########## FUNCTIONS ##########
+generate_trackers_list () {
+    trackers_list="" # Local variable for dynamic trackers
+    all_failed=true  # Assume that all URLs fail
+
+    # 1. Check if the list of URLs is empty
+    if [[ ${#live_trackers_list_urls[@]} -eq 0 ]]; then
+        echo "No live tracker URLs provided. Using the static list."
+        trackers_list="$STATIC_TRACKERS_LIST"
+        return
+    fi
+
+    # 2. Attempts to download trackers from each URL
+    for url in "${live_trackers_list_urls[@]}"; do
+        echo "Fetching trackers from: $url"
+        # Download data, silently
+        new_trackers=$($curl_executable -sS "$url")
+        if [[ $? -eq 0 && -n "$new_trackers" ]]; then
+            # If the download was successful, add the new trackers to trackers_list
+            trackers_list+="$new_trackers"$'\n'
+            all_failed=false # At least one URL worked
+        else
+            # If the download fails, report the error but continue
+            echo "Warning: Failed to fetch trackers from $url"
+        fi
+    done
+
+    # 3. Check if all downloads have failed
+    if [[ "$all_failed" == true ]]; then
+        echo "All live tracker URLs failed. Using the static list."
+        trackers_list="$STATIC_TRACKERS_LIST"
+    fi
 }
 
 inject_trackers () {
