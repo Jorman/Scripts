@@ -595,7 +595,7 @@ def main():
                     logger.info("For a list of available codes, use the option --help-languages.")
                     sys.exit(1)
             else:
-                logger.debug("Forces tongue detection even if below threshold.")
+                logger.debug("Forces language detection even if below threshold.")
 
         # Validation of confidence threshold
         if args.confidence < 1 or args.confidence > 100:
