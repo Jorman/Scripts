@@ -470,6 +470,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 
 	if [ ${#torrent_name_array[@]} -gt 0 ]; then
 		echo ""
+		generate_trackers_list
 		for i in "${!torrent_name_array[@]}"; do
 			echo -ne "\n\e[0;1;4;32mFor the Torrent: \e[0;4;32m"
 			echo "${torrent_name_array[$i]}"
@@ -480,7 +481,6 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 				else
 					echo -e "\e[0m\e[33mignore_private set to true, I'll inject trackers anyway\e[0m"
 				fi
-				generate_trackers_list
 				inject_trackers ${torrent_hash_array[$i]}
 			else
 				private_check=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/properties?hash=$(echo "$torrent_list" | $jq_executable --raw-output --arg tosearch "${torrent_name_array[$i]}" '.[] | select(.name == "\($tosearch)") | .hash')" | $jq_executable --raw-output '.is_private')
@@ -490,7 +490,6 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 					echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $private_tracker_name <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 				else
 					echo -e "\e[0m\e[33mThe torrent is not private, I'll inject trackers on it\e[0m"
-					generate_trackers_list
 					inject_trackers ${torrent_hash_array[$i]}
 				fi
 			fi
@@ -501,6 +500,7 @@ elif [ $auto_tor_grab -eq 0 ]; then # manual run
 else # auto_tor_grab active, so some *Arr
 	wait 5
 	get_torrent_list
+	generate_trackers_list
 
 	private_check=$(echo "$qbt_cookie" | $curl_executable --silent --fail --show-error --cookie - --request GET "${qbt_host}:${qbt_port}/api/v2/torrents/properties?hash=$hash" | $jq_executable --raw-output '.is_private')
 
@@ -509,7 +509,6 @@ else # auto_tor_grab active, so some *Arr
 		echo -e "\e[31m< Private tracker found \e[0m\e[33m-> $private_tracker_name <- \e[0m\e[31mI'll not add any extra tracker >\e[0m"
 	else
 		echo -e "\e[0m\e[33mThe torrent is not private, I'll inject trackers on it\e[0m"
-		generate_trackers_list
 		inject_trackers $hash
 	fi
 fi
