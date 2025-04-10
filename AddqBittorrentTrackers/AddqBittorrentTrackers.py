@@ -107,30 +107,40 @@ http://fxtt.ru:80/announce
 
 ########## FUNCTIONS ##########
 def generate_trackers_list():
-    # If the URL list is empty, use the static list and return
+    # Use a function attribute to store the state (equivalent to a static variable)
+    if not hasattr(generate_trackers_list, "trackers_list_cache"):
+        generate_trackers_list.trackers_list_cache = None
+
+    # Check to see if the list is already populated
+    if generate_trackers_list.trackers_list_cache is not None:
+        print("Trackers list already populated. Skipping generation.")
+        return generate_trackers_list.trackers_list_cache
+
+    # If the list is not populated, generate a new one
     if not live_trackers_list_urls or len(live_trackers_list_urls) == 0:
         print("The URL list is empty. Using the static tracker list.")
-        return STATIC_TRACKERS_LIST.strip().split("\n")
+        generate_trackers_list.trackers_list_cache = STATIC_TRACKERS_LIST.strip().split("\n")
+        return generate_trackers_list.trackers_list_cache
 
     trackers_list = ""
-    errors_count = 0  # Count how many URLs returned error
+    errors_count = 0
 
-    # Itera sugli URL e prova a scaricare i tracker
     for url in live_trackers_list_urls:
         try:
             response = requests.get(url)
-            response.raise_for_status()  # Check for HTTP errors
-            trackers_list += response.text + "\n"  # Add content to the list
+            response.raise_for_status()
+            trackers_list += response.text + "\n"
         except requests.RequestException as e:
             errors_count += 1
-            print(f"Error downloading from {url}: {e}")  # Error log for individual URL
+            print(f"Error downloading from {url}: {e}")
 
-    # If all URLs failed, use static list as fallback
     if errors_count == len(live_trackers_list_urls):
         print("All URLs failed. Using the static tracker list.")
-        return STATIC_TRACKERS_LIST.strip().split("\n")
+        generate_trackers_list.trackers_list_cache = STATIC_TRACKERS_LIST.strip().split("\n")
+    else:
+        generate_trackers_list.trackers_list_cache = trackers_list.strip().split("\n")
 
-    return trackers_list.strip().split("\n")
+    return generate_trackers_list.trackers_list_cache
 
 def get_qbittorrent_session(qbt_host, qbt_port, qbt_username, qbt_password):
     url = f"{qbt_host}:{qbt_port}"
