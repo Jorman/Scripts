@@ -247,109 +247,122 @@ wait() {
 }
 ########## FUNCTIONS ##########
 
-if [ -t 1 ] || [[ "$PWD" == *qbittorrent* ]] ; then
-	if [[ ! $@ =~ ^\-.+ ]]; then
-		echo "Arguments must be passed with - in front, like -n foo. Check instructions"
-		echo ""
-		$0 -h
-		exit
-	fi
+########## ARGUMENT PARSING + *Arr AUTO MODE DETECTION ##########
 
-	[ $# -eq 0 ] && $0 -h
+# --- Manual run: parse CLI arguments if any were passed ---
+if [[ $# -gt 0 ]]; then
 
-	if [ $# -eq 1 ] && [ $1 == "-f" ]; then
-		echo "Don't use only -f, you need to specify also the torrent!"
-		exit
-	fi
+  # Warn if arguments are passed without a dash
+  if [[ ! $@ =~ ^\-.+ ]]; then
+    echo "Arguments must be passed with - in front, like -n foo. Check instructions"
+    echo ""
+    $0 -h
+    exit
+  fi
 
-	while getopts ":acflhn:s:" opt; do
-		case ${opt} in
-			a ) # If used inject trackers to all torrent.
-				all_torrent=1
-				;;
-			c ) # If used remove all the existing trackers before injecting the new ones.
-				clean_existing_trackers=true
-				;;
-			f ) # If used force the injection also in private trackers.
-				applytheforce=1
-				;;
-			l ) # Print the list of the torrent where you can inject trackers.
-				get_torrent_list
-				echo -e "\n\e[0;32;1mCurrent torrents:\e[0;32m"
-				echo "$torrent_list" | $jq_executable --raw-output '.[] .name'
-				exit
-				;;
-			n ) # Specify the name of the torrent example -n foo or -n "foo bar", multiple -n can be used.
-				tor_arg_names+=("$OPTARG")
-				;;
-			s ) # Specify the category of the torrent example -s foo or -s "foo bar", multiple -s can be used. If -s is passed without arguments, the "default" categories will be used
-				tor_categories+=("$OPTARG")
-				;;
-			: )
-				echo "Invalid option: -${OPTARG} requires an argument" 1>&2
-				exit 0
-				;;
-			\? )
-				echo "Unknow option: -${OPTARG}" 1>&2
-				exit 1
-				;;
-			h | * ) # Display help.
-				echo "Usage:"
-				echo "$0 -a	Inject trackers to all torrent in qBittorrent, this not require any extra information"
-				echo "$0 -c	Clean all the existing trackers before the injection, this not require any extra information"
-				echo "$0 -f	Force the injection of the trackers inside the private torrent too, this not require any extra information"
-				echo "$0 -l	Print the list of the torrent where you can inject trackers, this not require any extra information"
-				echo "$0 -n	Specify the torrent name or part of it, for example -n foo or -n 'foo bar'"
-				echo "$0 -s	Specify the exact category name, for example -s foo or -s 'foo bar'. If -s is passed empty, \"\", the \"Uncategorized\" category will be used"
-				echo "$0 -h	Display this help"
-				echo ""
-				echo "NOTE:"
-				echo "It's possible to specify more than -n in one single command"
-				echo "It's possible to specify more than -s in one single command"
-				echo "Is also possible use -n foo -s bar to select specific name in specific category"
-				echo "Just remember that if you set -a, is useless to add any extra arguments, like -n, but -f can always be used"
-				exit 2
-				;;
-		esac
-	done
-	shift $((OPTIND -1))
-else
-	if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n "${lidarr_download_id}" ]] || [[ -n "${readarr_download_id}" ]]; then
-		#wait 5
-		if [[ -n "${sonarr_download_id}" ]]; then
-			echo "Sonarr variable found -> $sonarr_download_id"
-			hash=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
-		fi
+  # If -f is used alone, show warning
+  if [[ $# -eq 1 && $1 == "-f" ]]; then
+    echo "Don't use only -f, you need to specify also the torrent!"
+    exit
+  fi
 
-		if [[ -n "${radarr_download_id}" ]]; then
-			echo "Radarr variable found -> $radarr_download_id"
-			hash=$(echo "$radarr_download_id" | awk '{print tolower($0)}')
-		fi
-
-		if [[ -n "${lidarr_download_id}" ]]; then
-			echo "Lidarr variable found -> $lidarr_download_id"
-			hash=$(echo "$lidarr_download_id" | awk '{print tolower($0)}')
-		fi
-
-		if [[ -n "${readarr_download_id}" ]]; then
-			echo "Readarr variable found -> $readarr_download_id"
-			hash=$(echo "$readarr_download_id" | awk '{print tolower($0)}')
-		fi
-
-		hash_check "${hash}"
-		if [[ $? -ne 0 ]]; then
-			echo "No valid hash found for the torrent, I'll exit"
-			exit 3
-		fi
-		auto_tor_grab=1
-	fi
-
-	if [[ $sonarr_eventtype == "Test" ]] || [[ $radarr_eventtype == "Test" ]] || [[ $lidarr_eventtype == "Test" ]] || [[ $readarr_eventtype == "Test" ]]; then
-		echo "Test in progress..."
-		test_in_progress=1
-	fi
+  # Parse CLI options using getopts
+  while getopts ":acflhn:s:" opt; do
+    case ${opt} in
+      a ) # If used, inject trackers to all torrents.
+        all_torrent=1
+        ;;
+      c ) # If used, remove all existing trackers before injecting new ones.
+        clean_existing_trackers=true
+        ;;
+      f ) # If used, force injection also in private torrents.
+        applytheforce=1
+        ;;
+      l ) # Print the list of torrents where trackers can be injected.
+        get_torrent_list
+        echo -e "\n\e[0;32;1mCurrent torrents:\e[0;32m"
+        echo "$torrent_list" | $jq_executable --raw-output '.[] .name'
+        exit
+        ;;
+      n ) # Specify part of a torrent name (e.g., -n foo or -n "foo bar"). Can be used multiple times.
+        tor_arg_names+=("$OPTARG")
+        ;;
+      s ) # Specify exact category name (e.g., -s movies). Multiple -s allowed. Empty means "Uncategorized".
+        tor_categories+=("$OPTARG")
+        ;;
+      : )
+        echo "Invalid option: -${OPTARG} requires an argument" >&2
+        exit 1
+        ;;
+      \? )
+        echo "Unknown option: -${OPTARG}" >&2
+        exit 1
+        ;;
+      h | * ) # Display help
+        echo "Usage:"
+        echo "$0 -a    Inject trackers to all torrents in qBittorrent"
+        echo "$0 -c    Clean all existing trackers before the injection"
+        echo "$0 -f    Force injection even for private torrents"
+        echo "$0 -l    Print the list of torrents where you can inject trackers"
+        echo "$0 -n    Filter by name (e.g., -n 'foo' or -n 'foo bar')"
+        echo "$0 -s    Filter by category (e.g., -s movies). Empty means Uncategorized"
+        echo "$0 -h    Display this help"
+        echo ""
+        echo "NOTE:"
+        echo "You can use multiple -n and -s arguments in one command."
+        echo "You can also combine -n foo -s bar to select a specific name in a specific category."
+        echo "If you set -a, other filters like -n or -s will be ignored. But -f can always be used."
+        exit 0
+        ;;
+    esac
+  done
+  shift $((OPTIND -1))
 fi
 
+# --- Auto-trigger: handle Sonarr, Radarr, Lidarr, Readarr execution via env vars ---
+if [[ -n "${sonarr_download_id}" ]] || [[ -n "${radarr_download_id}" ]] || [[ -n "${lidarr_download_id}" ]] || [[ -n "${readarr_download_id}" ]]; then
+
+  # Handle Sonarr
+  if [[ -n "${sonarr_download_id}" ]]; then
+    echo "Sonarr variable found -> $sonarr_download_id"
+    hash=$(echo "$sonarr_download_id" | awk '{print tolower($0)}')
+  fi
+
+  # Handle Radarr
+  if [[ -n "${radarr_download_id}" ]]; then
+    echo "Radarr variable found -> $radarr_download_id"
+    hash=$(echo "$radarr_download_id" | awk '{print tolower($0)}')
+  fi
+
+  # Handle Lidarr
+  if [[ -n "${lidarr_download_id}" ]]; then
+    echo "Lidarr variable found -> $lidarr_download_id"
+    hash=$(echo "$lidarr_download_id" | awk '{print tolower($0)}')
+  fi
+
+  # Handle Readarr
+  if [[ -n "${readarr_download_id}" ]]; then
+    echo "Readarr variable found -> $readarr_download_id"
+    hash=$(echo "$readarr_download_id" | awk '{print tolower($0)}')
+  fi
+
+  # Validate the extracted hash
+  hash_check "${hash}"
+  if [[ $? -ne 0 ]]; then
+    echo "No valid hash found for the torrent, I'll exit"
+    exit 3
+  fi
+
+  auto_tor_grab=1
+fi
+
+# --- Handle *Arr Test Event Trigger ---
+if [[ $sonarr_eventtype == "Test" || $radarr_eventtype == "Test" || $lidarr_eventtype == "Test" || $readarr_eventtype == "Test" ]]; then
+  echo "Test in progress..."
+  test_in_progress=1
+fi
+
+########## END ARGUMENT PARSING ##########
 for i in "${tor_arg_names[@]}"; do
 	if [[ -z "${i// }" ]]; then
 		echo "one or more argument for -n not valid, try again"
