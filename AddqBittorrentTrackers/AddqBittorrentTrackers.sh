@@ -118,6 +118,12 @@ EOL
 
 ########## FUNCTIONS ##########
 generate_trackers_list () {
+    # If trackers_list is already populated, do nothing and return
+    if [[ -n "$trackers_list" ]]; then
+        echo "Trackers list already populated. Skipping generation."
+        return
+    fi
+
     trackers_list="" # Local variable for dynamic trackers
     all_failed=true  # Assume that all URLs fail
 
