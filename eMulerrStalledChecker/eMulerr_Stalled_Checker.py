@@ -4,6 +4,7 @@ import time
 import requests
 from requests.adapters import HTTPAdapter
 from requests import Session
+import math
 import os
 from urllib3.util.retry import Retry
 from datetime import datetime, timedelta
@@ -12,11 +13,14 @@ import logging
 from logging.handlers import RotatingFileHandler
 import sys
 
+
+import json
+
 # Sets the logging level based on the environment variable LOG_LEVEL
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
 numeric_level = getattr(logging, log_level, None)
 if not isinstance(numeric_level, int):
-	raise ValueError(f'Invalid log level: {log_level}')
+    raise ValueError(f'Invalid log level: {log_level}')
 
 # Get the environment variable for the log file directly
 log_to_file_path = os.getenv("LOG_TO_FILE", "")
@@ -60,140 +64,220 @@ if log_to_file_path:
         print(f"Log file configuration error: {e}")
 
 class Config:
-	# All environment variables must be provided by docker-compose.yml
-	DRY_RUN = os.environ.get('DRY_RUN', 'false').lower() == 'true'  # flags for dry running
+    # All environment variables must be provided by docker-compose.yml
+    DRY_RUN = os.environ.get('DRY_RUN', 'false').lower() == 'true'  # flags for dry running
 
-	EMULERR_ENDPOING = '/download-client?_data=routes%2F_shell.download-client'
-	EMULERR_HOST = f"{os.environ.get('EMULERR_HOST', '')}"
+    EMULERR_ENDPOING = '/download-client?_data=routes%2F_shell.download-client'
+    EMULERR_HOST = f"{os.environ.get('EMULERR_HOST', '')}"
 
-	CHECK_INTERVAL = int(os.environ.get('CHECK_INTERVAL'))  # in minutes
-	STALL_CHECKS = int(os.environ.get('STALL_CHECKS'))  # number of checks before considering stall
-	STALL_DAYS = int(os.environ.get('STALL_DAYS'))  # days after which a complete visa file is considered stalled
-	RECENT_DOWNLOAD_GRACE_PERIOD = int(os.environ.get('RECENT_DOWNLOAD_GRACE_PERIOD', '30'))  # in minutes
+    CHECK_INTERVAL = int(os.environ.get('CHECK_INTERVAL'))  # in minutes
+    STALL_CHECKS = int(os.environ.get('STALL_CHECKS'))  # number of checks before considering stall
+    STALL_DAYS = int(os.environ.get('STALL_DAYS'))  # days after which a complete visa file is considered stalled
+    RECENT_DOWNLOAD_GRACE_PERIOD = int(os.environ.get('RECENT_DOWNLOAD_GRACE_PERIOD', '30'))  # in minutes
 
-	# New configuration options for monitoring checks
-	DELETE_IF_UNMONITORED_SERIE = os.environ.get('DELETE_IF_UNMONITORED_SERIE', 'false').lower() == 'true'
-	DELETE_IF_UNMONITORED_SEASON = os.environ.get('DELETE_IF_UNMONITORED_SEASON', 'false').lower() == 'true'
-	DELETE_IF_UNMONITORED_EPISODE = os.environ.get('DELETE_IF_UNMONITORED_EPISODE', 'false').lower() == 'true'
-	DELETE_IF_ONLY_ON_EMULERR = os.environ.get('DELETE_IF_ONLY_ON_EMULERR', 'false').lower() == 'true'
+    # New configuration options for monitoring checks
+    DELETE_IF_UNMONITORED_SERIE = os.environ.get('DELETE_IF_UNMONITORED_SERIE', 'false').lower() == 'true'
+    DELETE_IF_UNMONITORED_SEASON = os.environ.get('DELETE_IF_UNMONITORED_SEASON', 'false').lower() == 'true'
+    DELETE_IF_UNMONITORED_EPISODE = os.environ.get('DELETE_IF_UNMONITORED_EPISODE', 'false').lower() == 'true'
+    DELETE_IF_ONLY_ON_EMULERR = os.environ.get('DELETE_IF_ONLY_ON_EMULERR', 'false').lower() == 'true'
 
-	# Download client name
-	DOWNLOAD_CLIENT = os.environ.get('DOWNLOAD_CLIENT', '')  # download client name in Sonarr/Radarr
+    # Download client name
+    DOWNLOAD_CLIENT = os.environ.get('DOWNLOAD_CLIENT', '')  # download client name in Sonarr/Radarr
 
-	# Radarr config (optional)
-	RADARR_HOST = os.environ.get('RADARR_HOST', None)
-	RADARR_API_KEY = os.environ.get('RADARR_API_KEY', None)
-	RADARR_CATEGORY = os.environ.get('RADARR_CATEGORY', None)  # category for Radarr downloads
-	
-	# Sonarr config (optional)
-	SONARR_HOST = os.environ.get('SONARR_HOST', None)
-	SONARR_API_KEY = os.environ.get('SONARR_API_KEY', None)
-	SONARR_CATEGORY = os.environ.get('SONARR_CATEGORY', None)  # category for Sonarr downloads
+    # Radarr config (optional)
+    RADARR_HOST = os.environ.get('RADARR_HOST', None)
+    RADARR_API_KEY = os.environ.get('RADARR_API_KEY', None)
+    RADARR_CATEGORY = os.environ.get('RADARR_CATEGORY', None)  # category for Radarr downloads
+    
+    # Sonarr config (optional)
+    SONARR_HOST = os.environ.get('SONARR_HOST', None)
+    SONARR_API_KEY = os.environ.get('SONARR_API_KEY', None)
+    SONARR_CATEGORY = os.environ.get('SONARR_CATEGORY', None)  # category for Sonarr downloads
 
-	# Pushover configuration
-	PUSHOVER_APP_TOKEN = os.environ.get('PUSHOVER_APP_TOKEN', '')
-	PUSHOVER_USER_KEY = os.environ.get('PUSHOVER_USER_KEY', '')
+    # Pushover configuration
+    PUSHOVER_APP_TOKEN = os.environ.get('PUSHOVER_APP_TOKEN', '')
+    PUSHOVER_USER_KEY = os.environ.get('PUSHOVER_USER_KEY', '')
 
-	# Assigns API_URL directly in the body of the class
-	API_URL = f"{os.environ.get('EMULERR_HOST', '')}{EMULERR_ENDPOING}"
+    # Assigns API_URL directly in the body of the class
+    API_URL = f"{os.environ.get('EMULERR_HOST', '')}{EMULERR_ENDPOING}"
 
-	@staticmethod
-	def validate():
-		mandatory_fields = [
-			'CHECK_INTERVAL', 'API_URL', 'STALL_CHECKS', 'STALL_DAYS', 'DOWNLOAD_CLIENT', 'EMULERR_HOST'
-		]
+    @staticmethod
+    def validate():
+        mandatory_fields = [
+            'CHECK_INTERVAL', 'API_URL', 'STALL_CHECKS', 'STALL_DAYS', 'DOWNLOAD_CLIENT', 'EMULERR_HOST'
+        ]
 
-		for field in mandatory_fields:
-			value = getattr(Config, field)
-			if value is None or value == '':
-				logger.error(f"Environment variable {field} must be set.")
-				exit(1)
+        for field in mandatory_fields:
+            value = getattr(Config, field)
+            if value is None or value == '':
+                logger.error(f"Environment variable {field} must be set.")
+                exit(1)
 
-		radarr_used = Config.RADARR_HOST is not None
-		sonarr_used = Config.SONARR_HOST is not None
+        radarr_used = Config.RADARR_HOST is not None
+        sonarr_used = Config.SONARR_HOST is not None
 
-		if not radarr_used and not sonarr_used:
-			logger.error("At least one of RADARR_HOST or SONARR_HOST must be set.")
-			exit(1)
+        if not radarr_used and not sonarr_used:
+            logger.error("At least one of RADARR_HOST or SONARR_HOST must be set.")
+            exit(1)
 
-		if radarr_used and not sonarr_used:
-			if Config.RADARR_API_KEY is None or Config.RADARR_CATEGORY is None:
-				logger.error("When using Radarr, RADARR_API_KEY and RADARR_CATEGORY must be set.")
-				exit(1)
+        if radarr_used and not sonarr_used:
+            if Config.RADARR_API_KEY is None or Config.RADARR_CATEGORY is None:
+                logger.error("When using Radarr, RADARR_API_KEY and RADARR_CATEGORY must be set.")
+                exit(1)
 
-			Config.SONARR_HOST = None
-			Config.SONARR_API_KEY = None
-			Config.SONARR_CATEGORY = None
+            Config.SONARR_HOST = None
+            Config.SONARR_API_KEY = None
+            Config.SONARR_CATEGORY = None
 
-		if sonarr_used and not radarr_used:
-			if Config.SONARR_API_KEY is None or Config.SONARR_CATEGORY is None:
-				logger.error("When using Sonarr, SONARR_API_KEY and SONARR_CATEGORY must be set.")
-				exit(1)
+        if sonarr_used and not radarr_used:
+            if Config.SONARR_API_KEY is None or Config.SONARR_CATEGORY is None:
+                logger.error("When using Sonarr, SONARR_API_KEY and SONARR_CATEGORY must be set.")
+                exit(1)
 
-			Config.RADARR_HOST = None
-			Config.RADARR_API_KEY = None
-			Config.RADARR_CATEGORY = None
+            Config.RADARR_HOST = None
+            Config.RADARR_API_KEY = None
+            Config.RADARR_CATEGORY = None
 
-		# New validation for *_HOST variables
-		host_variables = ['RADARR_HOST', 'SONARR_HOST', 'EMULERR_HOST']
-		
-		for host_var in host_variables:
-			host_value = os.environ.get(host_var)
-			if host_value and not host_value.startswith(('http://', 'https://')):
-				logger.error(f"Environment variable {host_var} must start with 'http://' or 'https://'.")
-				exit(1)
+        # New validation for *_HOST variables
+        host_variables = ['RADARR_HOST', 'SONARR_HOST', 'EMULERR_HOST']
+        
+        for host_var in host_variables:
+            host_value = os.environ.get(host_var)
+            if host_value and not host_value.startswith(('http://', 'https://')):
+                logger.error(f"Environment variable {host_var} must start with 'http://' or 'https://'.")
+                exit(1)
 
 class EmulerrDownload:
-	def __init__(self, file_data: dict):
-		self.name = file_data.get('name', '')
-		self.hash = file_data.get('hash', '')
-		self.size = file_data.get('size', 0)
-		self.size_done = file_data.get('size_done', 0)
-		self.progress = file_data.get('progress', 0) * 100
-		self.status = file_data.get('status_str', '')
-		self.src_count = file_data.get('src_count', 0)
-		self.src_count_a4af = file_data.get('src_count_a4af', 0)
-		self.last_seen_complete = file_data.get('last_seen_complete', 0)
-		self.category = file_data.get('meta', {}).get('category', 'unknown')
-		self.addedOn = file_data.get('meta', {}).get('addedOn', 0)
+    def __init__(self, file_data: dict):
+        self.name = file_data.get('name', '')
+        self.hash = file_data.get('hash', '')
+        self.size = file_data.get('size', 0)
+        self.size_done = file_data.get('size_done', 0)
+        self.progress = file_data.get('progress', 0) * 100  # notare che viene moltiplicato per 100
+        self.status = file_data.get('status_str', '')
+        self.src_count = file_data.get('src_count', 0)
+        self.src_count_a4af = file_data.get('src_count_a4af', 0)
+        self.last_seen_complete = file_data.get('last_seen_complete', 0)
+        self.category = file_data.get('meta', {}).get('category', 'unknown')
+        self.addedOn = file_data.get('meta', {}).get('addedOn', 0)
+
+    def __repr__(self):
+        return (
+            f"EmulerrDownload(name={self.name!r}, hash={self.hash!r}, size={self.size}, "
+            f"size_done={self.size_done}, progress={self.progress}, status={self.status!r}, "
+            f"src_count={self.src_count}, src_count_a4af={self.src_count_a4af}, "
+            f"last_seen_complete={self.last_seen_complete}, category={self.category!r}, "
+            f"addedOn={self.addedOn})"
+        )
 
 class SonarrDownload:
-	def __init__(self, record_data: dict):
-		self.title = record_data.get('title', '')
-		self.downloadId = record_data.get('downloadId', '')
-		self.id = record_data.get('id', '')
-		self.size = record_data.get('size', 0)
-		self.sizeleft = record_data.get('sizeleft', 0)
-		self.progress = (self.size - self.sizeleft) / self.size * 100 if self.size > 0 else 0
-		self.series_id = record_data.get('seriesId', None)
-		self.season_number = record_data.get('seasonNumber', None)
-		self.episode_id = record_data.get('episodeId', None)
+    def __init__(self, record_data: dict):
+        self.title = record_data.get('sourceTitle', '')
+        self.downloadId = record_data.get('downloadId', '')
+        self.download_client = record_data.get('downloadClientName', '')
+        self.id = record_data.get('id', '')
+        
+        # Assicuriamoci che size sia un intero
+        try:
+            self.size = int(record_data.get('size', 0))
+        except (ValueError, TypeError):
+            self.size = 0
+        
+        self.series_id = record_data.get('seriesId', None)
+        self.season_number = record_data.get('seasonNumber', None)
+        self.episode_id = record_data.get('episodeId', None)
+
+    def __repr__(self):
+        return (
+            f"SonarrDownload(title={self.title!r}, downloadId={self.downloadId!r}, "
+            f"download_client={self.download_client!r}, id={self.id!r}, size={self.size}, "
+            f"series_id={self.series_id!r}, season_number={self.season_number!r}, "
+            f"episode_id={self.episode_id!r})"
+        )
 
 class RadarrDownload:
-	def __init__(self, record_data: dict):
-		self.title = record_data.get('title', '')
-		self.downloadId = record_data.get('downloadId', '')
-		self.id = record_data.get('id', '')
-		self.size = record_data.get('size', 0)
-		self.sizeleft = record_data.get('sizeleft', 0)
-		self.progress = (self.size - self.sizeleft) / self.size * 100 if self.size > 0 else 0
-		self.movie_id = record_data.get('movieId', None)
+    def __init__(self, record_data: dict):
+        self.title = record_data.get('sourceTitle', '')
+        self.downloadId = record_data.get('downloadId', '')
+        self.download_client = record_data.get('downloadClientName', '')
+        self.id = record_data.get('id', '')
+        
+        # Convertiamo size in intero, nel caso non lo sia già
+        try:
+            self.size = int(record_data.get('size', 0))
+        except (ValueError, TypeError):
+            self.size = 0
+        
+        self.movie_id = record_data.get('movieId', None)
 
-def check_special_cases(downloads, sonarr_queue, radarr_queue):
-    """Check special cases for Sonarr and Radarr, printing alerts for downloads to be removed."""
+    def __repr__(self):
+        return (
+            f"RadarrDownload(title={self.title!r}, downloadId={self.downloadId!r}, "
+            f"download_client={self.download_client!r}, id={self.id!r}, size={self.size}, "
+            f"movie_id={self.movie_id!r})"
+        )
+
+def check_special_cases(emulerr_data):
+    """
+    Processes the list of incomplete downloads:
+      - For each download makes a paged request to the 'history' endpoint to get the records.
+      - If no valid records (eventType "grabbed" and downloadClientName == Config.DOWNLOAD_CLIENT)
+        is found, the download is considered present only on eMulerr and added to emulerr_downloads_to_remove.
+      - If a valid record is present, an object is created (RadarrDownload or SonarrDownload)
+        which also includes a reference to the original download and the valid record, and is added to the relevant queue.
+
+      Next, for each object in the queues:
+      - For Radarr: if the movie is not monitored (verified via is_movie_monitored), the original download
+        is added to sonarr_radarr_downloads_to_remove.
+      - For Sonarr: if the series, season or episode is not monitored (verified via respective functions),
+        the original download is added to sonarr_radarr_downloads_to_remove.
+
+      Returns a tuple with:
+        (emulerr_downloads_to_remove, sonarr_radarr_downloads_to_remove)
+    """
+    # Output lists
     emulerr_downloads_to_remove = []
     sonarr_radarr_downloads_to_remove = []
+    sonarr_queue = []
+    radarr_queue = []
 
-    def find_queue_item_by_hash(hash_value, queue_data):
-        """Find the queue element based on the hash."""
-        logger.debug(f"Searching for hash {hash_value} in queue of length {len(queue_data)}")
-        for item in queue_data:
-            logger.debug(f"Checking item with downloadId: {item.downloadId}")
-            if item.downloadId == hash_value:
-                logger.debug(f"Found item with hash {hash_value}")
-                return item
-        logger.debug(f"No item found with hash {hash_value}")
-        return None
+    def get_history_records(download, host, api_key, full_hash, page_size=10):
+        headers = {
+            "accept": "application/json",
+            "X-Api-Key": api_key
+        }
+        all_records = []
+        page = 1
+
+        while True:
+            history_url = f"{host}/api/v3/history?page={page}&pageSize={page_size}&downloadId={full_hash}"
+            try:
+                response = requests.get(history_url, headers=headers, timeout=10)
+                if response.status_code != 200:
+                    logger.error(
+                        f"Error ({response.status_code}) in the request history for '{download.name}' from {history_url}"
+                    )
+                    break
+
+                page_data = response.json()
+            except Exception as e:
+                logger.error(f"Exception during history request for '{download.name}': {e}")
+                break
+
+            records = page_data.get("records", [])
+            all_records.extend(records)
+
+            # Calculates the total number of pages based on totalRecords.
+            total_records = page_data.get("totalRecords", 0)
+            total_pages = math.ceil(total_records / page_size)
+
+            logger.debug(f"Page {page}/{total_pages} for '{download.name}', records obtained: {len(records)}")
+
+            if page >= total_pages:
+                break
+            page += 1
+
+        return all_records
 
     def get_series_monitor_status(host, api_key, series_id):
         """Gets series monitoring status."""
@@ -214,6 +298,39 @@ def check_special_cases(downloads, sonarr_queue, radarr_queue):
         except Exception as e:
             logger.error(f"Error in retrieving series information: {e}")
             return False, []
+
+    def get_season_number_for_episode(sonarr_host, sonarr_api_key, episode_id):
+        """
+        Retrieve the season number of the episode using the Sonarr API.
+
+        Args:
+            sonarr_host (str): base URL of the Sonarr instance (e.g., "http://localhost:8989")
+            sonarr_api_key (str): API Key for the Sonarr instance.
+            episode_id (int): ID of the episode to be queried.
+
+        Returns:
+            int or None: The season number if found, otherwise None.
+        """
+        url = f"{sonarr_host}/api/v3/episode/{episode_id}"
+        params = {
+            "apikey": sonarr_api_key
+        }
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            season_number = data.get("seasonNumber")
+            if season_number is None:
+                logger.error(f"Season number not found for episode {episode_id} in the answer: {data}")
+            else:
+                logger.debug(f"Season number for the episode {episode_id}: {season_number}")
+            return season_number
+            
+        except requests.RequestException as e:
+            logger.error(f"Error when calling Sonarr for the episode. {episode_id}: {e}")
+            return None
 
     def get_season_monitor_status(seasons, season_number):
         """Gets the status of monitoring the season."""
@@ -264,326 +381,280 @@ def check_special_cases(downloads, sonarr_queue, radarr_queue):
             logger.error(f"Error in retrieving film information: {e}")
             return False
 
-    for download in downloads:
-        logger.debug(f"Checking download: {download.name} with hash: {download.hash}")
-        if download.category == Config.SONARR_CATEGORY:
-            logger.debug(f"Processing Sonarr category for {download.name}")
-            queue_item = find_queue_item_by_hash(download.hash, sonarr_queue)
-            logger.debug(f"Found Sonarr queue item for {download.name}: {queue_item}")
-            if queue_item is None and Config.DELETE_IF_ONLY_ON_EMULERR:
-                logger.warning(f"[SONARR] Download {download.name} is only in Emulerr. It will be removed from Emulerr.")
-                send_pushover_notification(f"[SONARR] Download {download.name} is only in Emulerr. It will be removed from Emulerr.", dry_run=Config.DRY_RUN)
-                emulerr_downloads_to_remove.append(download)
-            else:
-                # Check the monitoring status of the series
-                if Config.DELETE_IF_UNMONITORED_SERIE and queue_item.series_id is not None:
-                    logger.debug(f"Checking series monitoring status for {download.name} with series_id: {queue_item.series_id}")
-                    series_monitored, seasons = get_series_monitor_status(Config.SONARR_HOST, Config.SONARR_API_KEY, queue_item.series_id)
-                    logger.debug(f"Series monitoring status for {download.name}: {series_monitored}")
-                    if not series_monitored:
-                        logger.warning(f"[SONARR] Series for {download.name} is not monitored. It will be removed from Sonarr queue.")
-                        send_pushover_notification(f"[SONARR] Series for {download.name} is not monitored. It will be removed from Sonarr queue.", dry_run=Config.DRY_RUN)
-                        sonarr_radarr_downloads_to_remove.append(download)
-                        continue
+    # First loop: processes each download by querying the history.
+    for download in emulerr_data:
+        # Constructs the full hash: assuming 32 characters + "00000000"
+        full_hash = download.hash + "00000000"
 
-                # Check the monitoring status of the season
-                if Config.DELETE_IF_UNMONITORED_SEASON and queue_item.season_number is not None:
-                    logger.debug(f"Checking season monitoring status for {download.name} with season_number: {queue_item.season_number}")
-                    season_monitored = get_season_monitor_status(seasons, queue_item.season_number)
-                    logger.debug(f"Season monitoring status for {download.name}: {season_monitored}")
-                    if not season_monitored:
-                        logger.warning(f"[SONARR] Season for {download.name} is not monitored. It will be removed from Sonarr queue.")
-                        send_pushover_notification(f"[SONARR] Season for {download.name} is not monitored. It will be removed from Sonarr queue.", dry_run=Config.DRY_RUN)
-                        sonarr_radarr_downloads_to_remove.append(download)
-                        continue
+        # Determines the client and connection details based on the category set in Config.
+        client = None
+        host = None
+        api_key = None
 
-                # Check the monitoring status of the episode
-                if Config.DELETE_IF_UNMONITORED_EPISODE and queue_item.episode_id is not None:
-                    logger.debug(f"Checking episode monitoring status for {download.name} with episode_id: {queue_item.episode_id}")
-                    episode_monitored = get_episode_monitor_status(Config.SONARR_HOST, Config.SONARR_API_KEY, queue_item.episode_id)
-                    logger.debug(f"Episode monitoring status for {download.name}: {episode_monitored}")
-                    if not episode_monitored:
-                        logger.warning(f"[SONARR] Episode for {download.name} is not monitored. It will be removed from Sonarr queue.")
-                        send_pushover_notification(f"[SONARR] Episode for {download.name} is not monitored. It will be removed from Sonarr queue.", dry_run=Config.DRY_RUN)
-                        sonarr_radarr_downloads_to_remove.append(download)
-                        continue
+        if Config.RADARR_CATEGORY is not None and download.category == Config.RADARR_CATEGORY:
+            client = "radarr"
+            host = Config.RADARR_HOST
+            api_key = Config.RADARR_API_KEY
+        elif Config.SONARR_CATEGORY is not None and download.category == Config.SONARR_CATEGORY:
+            client = "sonarr"
+            host = Config.SONARR_HOST
+            api_key = Config.SONARR_API_KEY
+        else:
+            logger.warning(
+                f"Category '{download.category}' does not match either RADARR_CATEGORY or SONARR_CATEGORY defined in Config.. "
+                f"Skip processing for downloading '{download.name}'."
+            )
+            continue
 
-        elif download.category == Config.RADARR_CATEGORY:
-            logger.debug(f"Processing Radarr category for {download.name}")
-            queue_item = find_queue_item_by_hash(download.hash, radarr_queue)
-            logger.debug(f"Found Radarr queue item for {download.name}: {queue_item}")
-            if queue_item is None and Config.DELETE_IF_ONLY_ON_EMULERR:
-                logger.warning(f"[RADARR] Download {download.name} is only in Emulerr. It will be removed from Emulerr.")
-                send_pushover_notification(f"[RADARR] Download {download.name} is only in Emulerr. It will be removed from Emulerr.", dry_run=Config.DRY_RUN)
-                emulerr_downloads_to_remove.append(download)
-            elif queue_item is not None:
-                logger.debug(f"[RADARR] Download {download.name} found in Radarr queue.")
+        history_records = get_history_records(download, host, api_key, full_hash)
 
-                # Check the monitoring status of the film
-                logger.debug(f"Checking movie monitoring status for {download.name}")
-                logger.debug(f"Queue item for {download.name}: {queue_item.__dict__}")
-                if queue_item.movie_id is not None:
-                    logger.debug(f"Checking movie monitoring status for {download.name} with movie_id: {queue_item.movie_id}")
-                    movie_monitored = is_movie_monitored(Config.RADARR_HOST, Config.RADARR_API_KEY, queue_item.movie_id)
-                    logger.debug(f"Movie monitoring status for {download.name}: {movie_monitored}")
-                    if not movie_monitored:
-                        logger.warning(f"[RADARR] Movie {download.name} is not monitored. It will be removed from Radarr queue.")
-                        send_pushover_notification(f"[RADARR] Movie {download.name} is not monitored. It will be removed from Radarr queue.", dry_run=Config.DRY_RUN)
-                        sonarr_radarr_downloads_to_remove.append(download)
-                else:
-                    logger.warning(f"[RADARR] Movie ID for {download.name} is None. Skipping movie check.")
-            else:
-                logger.error(f"[RADARR] Queue item for {download.name} is None. Cannot check movie monitoring status.")
+        valid_record = None
+        # Cerca il primo record valido
+        for record in history_records:
+            if record.get("eventType") != "grabbed":
+                continue
+            data = record.get("data", {})
+            if data.get("downloadClientName") == Config.DOWNLOAD_CLIENT:
+                valid_record = record
+                break
 
-    return emulerr_downloads_to_remove, sonarr_radarr_downloads_to_remove
+        if valid_record is None:
+            logger.debug(
+                f"Records present for '{download.name}' (hash: {download.hash}), but no one meets the criteria. "
+                "Download considered present only on eMulerr."
+            )
+            emulerr_downloads_to_remove.append(download)
+            continue
+
+        # If a valid record is present, creates the specific object and retains the record for later checking
+        if client == "radarr":
+            r_download = RadarrDownload(valid_record)
+            radarr_queue.append(r_download)
+        elif client == "sonarr":
+            s_download = SonarrDownload(valid_record)
+            sonarr_queue.append(s_download)
+
+    # Second step: check monitoring for queued downloads.
+
+    # For Radarr: if the movie is not monitored, flag the download for removal.
+    for r_obj in radarr_queue:
+        # Suppose the record contains "movieId" in data.
+        movie_id = r_obj.movie_id
+        if not movie_id:
+            logger.error(f"Il record per '{r_obj.title}' does not contain 'movieId', it will only be considered on eMulerr.")
+            sonarr_radarr_downloads_to_remove.append(r_obj)
+            continue
+
+        if not is_movie_monitored(Config.RADARR_HOST, Config.RADARR_API_KEY, movie_id):
+            logger.warning(f"[RADARR] The movie '{r_obj.title}' Is not monitored. It will be marked for removal.")
+            sonarr_radarr_downloads_to_remove.append(r_obj)
+
+    for s_obj in sonarr_queue:
+        # Extract the main fields
+        series_id = s_obj.series_id
+        episode_id = s_obj.episode_id
+        
+        # Retrieve the season number using Sonarr's API for the episode.
+        season_number = get_season_number_for_episode(Config.SONARR_HOST, Config.SONARR_API_KEY, episode_id)
+
+        # Update the object with the obtained season_number.
+        s_obj.season_number = season_number
+
+        if not series_id:
+            logger.error(f"The record for '{s_obj.title}' does not contain 'seriesId', it will only be considered on eMulerr.")
+            sonarr_radarr_downloads_to_remove.append(s_obj)
+            continue
+
+        # Gets series status and season information.
+        series_monitored, seasons = get_series_monitor_status(Config.SONARR_HOST, Config.SONARR_API_KEY, series_id)
+        if not series_monitored:
+            logger.warning(f"[SONARR] The show '{s_obj.title}' Is not monitored. It will be marked for removal.")
+            sonarr_radarr_downloads_to_remove.append(s_obj)
+            continue
+
+        if not episode_id:
+            logger.error(f"The record for '{s_obj.title}' does not contain 'episodeId', it will only be considered on eMulerr.")
+            sonarr_radarr_downloads_to_remove.append(s_obj)
+            continue
+
+        if season_number is None:
+            logger.error(f"It was not possible to determine the season number for the episode {episode_id}.")
+            sonarr_radarr_downloads_to_remove.append(s_obj)
+            continue
+
+        # Check season tracking using season information.
+        if not get_season_monitor_status(seasons, season_number):
+            logger.warning(f"[SONARR] The season {season_number} for '{s_obj.title}' Is not monitored. It will be marked for removal.")
+            sonarr_radarr_downloads_to_remove.append(s_obj)
+            continue
+
+        # Controlla il monitoraggio dell'episodio
+        if not get_episode_monitor_status(Config.SONARR_HOST, Config.SONARR_API_KEY, episode_id):
+            logger.warning(f"[SONARR] The episode '{s_obj.title}' Is not monitored. It will be marked for removal.")
+            sonarr_radarr_downloads_to_remove.append(s_obj)
+
+    return emulerr_downloads_to_remove, sonarr_radarr_downloads_to_remove, sonarr_queue, radarr_queue
 
 def emulerr_remove_download(hash_32: str, dry_run: bool = False) -> Dict[str, Any]:
-	url = f"{Config.EMULERR_HOST}/api/v2/torrents/delete?_data=routes%2Fapi.v2.torrents.delete"
-	headers = {
-		'Content-Type': 'application/x-www-form-urlencoded'
-	}
-	data = {
-		'_data': 'routes/api.v2.torrents.delete',
-		'hashes': hash_32.upper()
-	}
+    url = f"{Config.EMULERR_HOST}/api/v2/torrents/delete?_data=routes%2Fapi.v2.torrents.delete"
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
+    data = {
+        '_data': 'routes/api.v2.torrents.delete',
+        'hashes': hash_32.upper()
+    }
 
-	if not dry_run:
-		try:
-			response = requests.post(url, headers=headers, data=data)
-			response.raise_for_status()
-			result = response.json()
-			result['status_code'] = response.status_code
-			return result
-		except requests.exceptions.RequestException as e:
-			logger.error(f"Error removing download: {e}")
-			return {"error": str(e), "status_code": e.response.status_code if e.response else None}
-	else:
-		logger.debug(f"DRY_RUN: Would remove download with hash: {hash_32}")
-		return {"dry_run": True, "message": "Download removal simulated", "status_code": 200}
+    if not dry_run:
+        try:
+            response = requests.post(url, headers=headers, data=data)
+            response.raise_for_status()
+            result = response.json()
+            result['status_code'] = response.status_code
+            return result
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error removing download: {e}")
+            return {"error": str(e), "status_code": e.response.status_code if e.response else None}
+    else:
+        logger.debug(f"DRY_RUN: Would remove download with hash: {hash_32}")
+        return {"dry_run": True, "message": "Download removal simulated", "status_code": 200}
 
-def fetch_history(host: str, api_key: str, target_hash: str):
-	headers = {'X-Api-Key': api_key}
-	page = 1
+def handle_stalled_download(queue_id: str, host: str, api_key: str, dry_run: bool = True) -> bool:
+    """
+    Mark as failed a download (identified by queue_id) using the
+    endpoint /api/v3/history/failed/{id}.
 
-	while True:
-		url = f"{host}/api/v3/history?page={page}"
-		try:
-			response = requests.get(url, headers=headers)
-			response.raise_for_status()
-			data = response.json()
+    :param queue_id: The id of the download in the queue (Radarr/Sonarr) to be marked as failed.
+    :param host: The base host (URL) of the service (Radarr or Sonarr).
+    :param api_key: The API key for authentication.
+    :param dry_run: If True, the function only logs the call without executing the action
+    :return: True if the operation was successful, False otherwise
+    """
+    
+    url = f"{host}/api/v3/history/failed/{queue_id}"
+    headers = {
+        'X-Api-Key': api_key,
+        'Content-Type': 'application/json'
+    }
 
-			records = data.get('records', [])
-			if not records:
-				break
+    if dry_run:
+        logger.info(f"[DRY RUN] I would mark as failed the download with id {queue_id} using: {url}")
+        return True
 
-			for record in records:
-				if record.get('downloadId') == target_hash:
-					return [record]
-
-			page += 1
-
-		except requests.exceptions.RequestException as e:
-			logger.error(f"Error retrieving history page {page}: {e}")
-			break
-
-	return []
-
-def find_grab_id_by_hash(hash_32: str, host: str, api_key: str) -> int:
-	hash_40 = hash_32.ljust(40, '0')
-	history_records = fetch_history(host, api_key, hash_40)
-
-	if history_records:
-		record = history_records[0]
-		logger.debug(f"Matching grab found. Grab ID: {record['id']}")
-		return record['id']
-
-	logger.debug(f"No matching grab found for hash: {hash_40}")
-	return None
-
-def mark_as_failed(download: EmulerrDownload, host: str, api_key: str, dry_run: bool = True) -> bool:
-
-	if dry_run:
-		logger.debug(f"[DRY RUN] Would mark download {download.name} as failed")
-		return True
-
-	grab_id = find_grab_id_by_hash(download.hash, host, api_key)
-	
-	if grab_id is None:
-		return False
-
-	url = f"{host}/api/v3/history/failed/{grab_id}"
-	headers = {'X-Api-Key': api_key}
-
-	try:
-		response = requests.post(url, headers=headers)
-
-		if response.status_code == 200:
-			logger.debug(f"Download {download.name} has been marked as failed.")
-			return True
-		else:
-			logger.error(f"Failed to mark download {download.name} as failed. Status: {response.status_code}")
-			return False
-	except Exception as e:
-		logger.error(f"Error marking download as failed: {e}")
-		return False
-
-def remove_download(download: Union[SonarrDownload, RadarrDownload, EmulerrDownload], queue_id: int, host: str, api_key: str, dry_run: bool = True) -> bool:
-	if dry_run:
-		logger.debug(f"[DRY RUN] Would remove download {download.name} from queue")
-		return True
-
-	url = f"{host}/api/v3/queue/{queue_id}"
-	headers = {'X-Api-Key': api_key}
-	params = {
-		'removeFromClient': 'true',
-		'blocklist': 'false'
-	}
-
-	try:
-		response = requests.delete(url, headers=headers, params=params)
-		response.raise_for_status()
-		logger.debug(f"Successfully removed download {download.name} from queue")
-		return True
-	except requests.exceptions.RequestException as e:
-		logger.error(f"Error removing download: {e}")
-		return False
-
-def handle_stalled_download(download: EmulerrDownload, sonarr_queue, radarr_queue, dry_run: bool = True) -> None:
-	"""Handle a stalled download"""
-
-	# Determine which host and api_key to use based on the category
-	if Config.SONARR_CATEGORY is not None and download.category == Config.SONARR_CATEGORY:
-		host = Config.SONARR_HOST
-		api_key = Config.SONARR_API_KEY
-		queue = sonarr_queue
-	elif Config.RADARR_CATEGORY is not None and download.category == Config.RADARR_CATEGORY:
-		host = Config.RADARR_HOST
-		api_key = Config.RADARR_API_KEY
-		queue = radarr_queue
-	else:
-		logger.debug(f"Unknown category: {download.category}")
-		return
-
-	# First mark as failed
-	if mark_as_failed(download, host, api_key, dry_run):
-		logger.debug(f"{'[DRY RUN] ' if dry_run else ''}Successfully marked {download.name} as failed")
-
-		# Find the corresponding queue item
-		queue_item = next((item for item in queue if item.downloadId == download.hash), None)
-		if queue_item:
-			# Then remove from queue
-			if remove_download(download, queue_item.id, host, api_key, dry_run):
-				logger.debug(f"{'[DRY RUN] ' if dry_run else ''}Successfully removed {download.name} from queue")
-			else:
-				logger.error(f"Failed to remove download {download.name} from queue")
-		else:
-			logger.error(f"Could not find queue item for download: {download.name}")
-	else:
-		logger.error(f"Failed to handle stalled download {download.name}")
-
-	time.sleep(5)
+    try:
+        response = requests.post(url, headers=headers)
+        if response.status_code == 200:
+            logger.info(f"Download with id {queue_id} successfully marked as failed")
+            return True
+        else:
+            logger.error(f"Error in marking as failed the download with id {queue_id}: "
+                         f"status code {response.status_code}, response: {response.text}")
+            return False
+    except Exception as e:
+        logger.exception(f"Exception in marking the download as failed {queue_id}: {e}")
+        return False
 
 def send_pushover_notification(message: str, dry_run: bool = False):
-	if dry_run:
-		logger.debug(f"Dry run is active. Pushover notification not sent: {message}")
-		return
+    if dry_run:
+        logger.debug(f"Dry run is active. Pushover notification not sent: {message}")
+        return
 
-	if Config.PUSHOVER_APP_TOKEN and Config.PUSHOVER_USER_KEY:
-		try:
-			response = requests.post("https://api.pushover.net/1/messages.json", data={
-				"token": Config.PUSHOVER_APP_TOKEN,
-				"user": Config.PUSHOVER_USER_KEY,
-				"message": message
-			})
-			response.raise_for_status()
-			logger.debug(f"Pushover notification sent successfully: {message}")
-		except requests.RequestException as e:
-			logger.error(f"Failed to send Pushover notification: {str(e)}")
-	else:
-		logger.warning("Pushover notification not sent because PUSHOVER_APP_TOKEN or PUSHOVER_USER_KEY is not set.")
+    if Config.PUSHOVER_APP_TOKEN and Config.PUSHOVER_USER_KEY:
+        try:
+            response = requests.post("https://api.pushover.net/1/messages.json", data={
+                "token": Config.PUSHOVER_APP_TOKEN,
+                "user": Config.PUSHOVER_USER_KEY,
+                "message": message
+            })
+            response.raise_for_status()
+            logger.debug(f"Pushover notification sent successfully: {message}")
+        except requests.RequestException as e:
+            logger.error(f"Failed to send Pushover notification: {str(e)}")
+    else:
+        logger.warning("Pushover notification not sent because PUSHOVER_APP_TOKEN or PUSHOVER_USER_KEY is not set.")
 
 class StallChecker:
-	def __init__(self):
-		self.warnings = {}
+    def __init__(self):
+        self.warnings = {}
 
-	def check_status(self, download: EmulerrDownload) -> tuple[bool, str, int]:
-		current_hash = download.hash
+    def check_status(self, download: EmulerrDownload) -> tuple[bool, str, int]:
+        current_hash = download.hash
 
-		added_on = download.addedOn / 1000  # Convert to seconds
-		recent_download_threshold = time.time() - (Config.RECENT_DOWNLOAD_GRACE_PERIOD * 60)
-		if added_on > recent_download_threshold:
-			if current_hash in self.warnings:
-				del self.warnings[current_hash]
-			return False, "", 0
+        added_on = download.addedOn / 1000  # Convert to seconds
+        recent_download_threshold = time.time() - (Config.RECENT_DOWNLOAD_GRACE_PERIOD * 60)
+        if added_on > recent_download_threshold:
+            if current_hash in self.warnings:
+                del self.warnings[current_hash]
+            return False, "", 0
 
-		# Check if src_count_a4af > 0
-		if download.src_count_a4af > 0:
-			if current_hash in self.warnings:
-				del self.warnings[current_hash]
-			return False, "", 0
+        # Check if src_count_a4af > 0
+        if download.src_count_a4af > 0:
+            if current_hash in self.warnings:
+                del self.warnings[current_hash]
+            return False, "", 0
 
-		# Check if download is 100% complete
-		if download.progress >= 100:
-			if current_hash in self.warnings:
-				del self.warnings[current_hash]
-			return False, "", 0
+        # Check if download is 100% complete
+        if download.progress >= 100:
+            if current_hash in self.warnings:
+                del self.warnings[current_hash]
+            return False, "", 0
 
-		# Check if size_done has changed
-		if current_hash in self.warnings and download.size_done != self.warnings[current_hash]['last_size']:
-			del self.warnings[current_hash]
-			return False, "", 0
+        # Check if size_done has changed
+        if current_hash in self.warnings and download.size_done != self.warnings[current_hash]['last_size']:
+            del self.warnings[current_hash]
+            return False, "", 0
 
-		if download.last_seen_complete == 0:
-			reason = "Never seen complete"
-			if current_hash in self.warnings:
-				# Increment check_count if size_done hasn't changed
-				self.warnings[current_hash]['count'] += 1
-				self.warnings[current_hash]['last_size'] = download.size_done
-				count = self.warnings[current_hash]['count']
+        if download.last_seen_complete == 0:
+            reason = "Never seen complete"
+            if current_hash in self.warnings:
+                # Increment check_count if size_done hasn't changed
+                self.warnings[current_hash]['count'] += 1
+                self.warnings[current_hash]['last_size'] = download.size_done
+                count = self.warnings[current_hash]['count']
 
-				if count > Config.STALL_CHECKS:
-					return True, reason, count
-				else:
-					return False, reason, count
-			else:
-				# Add to warnings if not previously warned
-				self.warnings[current_hash] = {'count': 1, 'last_size': download.size_done}
-				return False, reason, 1
+                if count > Config.STALL_CHECKS:
+                    return True, reason, count
+                else:
+                    return False, reason, count
+            else:
+                # Add to warnings if not previously warned
+                self.warnings[current_hash] = {'count': 1, 'last_size': download.size_done}
+                return False, reason, 1
 
-		# Rule 3: If last_seen_complete > STALL_DAYS
-		if download.last_seen_complete > 0:
-			stall_time = time.time() - (Config.STALL_DAYS * 24 * 60 * 60)
-			if download.last_seen_complete < stall_time:
-				reason = f"Last seen complete > {Config.STALL_DAYS} days ago"
-				if current_hash in self.warnings:
-					# Increment check_count if size_done hasn't changed
-					self.warnings[current_hash]['count'] += 1
-					self.warnings[current_hash]['last_size'] = download.size_done
-					count = self.warnings[current_hash]['count']
+        # Rule 3: If last_seen_complete > STALL_DAYS
+        if download.last_seen_complete > 0:
+            stall_time = time.time() - (Config.STALL_DAYS * 24 * 60 * 60)
+            if download.last_seen_complete < stall_time:
+                reason = f"Last seen complete > {Config.STALL_DAYS} days ago"
+                if current_hash in self.warnings:
+                    # Increment check_count if size_done hasn't changed
+                    self.warnings[current_hash]['count'] += 1
+                    self.warnings[current_hash]['last_size'] = download.size_done
+                    count = self.warnings[current_hash]['count']
 
-					if count > Config.STALL_CHECKS:
-						return True, reason, count
-					else:
-						return False, reason, count
-				else:
-					# Add to warnings if not previously warned
-					self.warnings[current_hash] = {'count': 1, 'last_size': download.size_done}
-					return False, reason, 1
-			else:
-				if current_hash in self.warnings:
-					del self.warnings[current_hash]
-				return False, "", 0
+                    if count > Config.STALL_CHECKS:
+                        return True, reason, count
+                    else:
+                        return False, reason, count
+                else:
+                    # Add to warnings if not previously warned
+                    self.warnings[current_hash] = {'count': 1, 'last_size': download.size_done}
+                    return False, reason, 1
+            else:
+                if current_hash in self.warnings:
+                    del self.warnings[current_hash]
+                return False, "", 0
 
-		return False, "", 0
+        return False, "", 0
 
-	def cleanup_warnings(self, current_hashes: set[str]):
-		to_remove = [h for h in self.warnings.keys() if h not in current_hashes]
+    def cleanup_warnings(self, current_hashes: set[str]):
+        to_remove = [h for h in self.warnings.keys() if h not in current_hashes]
 
-		for h in to_remove:
-			del self.warnings[h]
+        for h in to_remove:
+            del self.warnings[h]
 
 def fetch_emulerr_data() -> List[EmulerrDownload]:
-    """Retrieve active downloads from server with retry mechanism"""
+    """Retrieve active downloads from server with retry mechanism, filtering by SONARR_CATEGORY or RADARR_CATEGORY"""
     session = Session()
     retry_strategy = Retry(
         total=10,  # Maximum number of attempts
@@ -598,288 +669,222 @@ def fetch_emulerr_data() -> List[EmulerrDownload]:
     try:
         response = session.get(Config.API_URL)
         response.raise_for_status()  # This throws an exception for incorrect HTTP status codes
+        
         data = response.json()
         files = data.get('files', [])
         logger.debug(f"Retrieved {len(files)} total file{'s' if len(files) != 1 else ''}")
-        downloads = [EmulerrDownload(file) for file in files]
-        return downloads
+
+        # Log categories of all files
+        for file in files:
+            meta = file.get('meta', {})
+            category = meta.get('category', 'Category not found')
+            logger.debug(f"File category: {category}")
+
+        # Filter downloads based on category
+        filtered_downloads = [
+            EmulerrDownload(file) for file in files 
+            if file.get('meta', {}).get('category') in [Config.SONARR_CATEGORY, Config.RADARR_CATEGORY]
+        ]
+
+        return filtered_downloads
     except requests.exceptions.RequestException as e:
         logger.error(f"Error retrieving downloads: {e}")
         return []
 
-def fetch_sonarr_queue() -> List[SonarrDownload]:
-	"""Retrieve active downloads from Sonarr, handling pagination with the new URL parameters."""
-	page = 1
-	all_downloads = []
-	previous_page_data = None
-
-	# Prepare headers for the request
-	headers = {
-		"accept": "application/json",
-		"X-Api-Key": Config.SONARR_API_KEY,
-	}
-
-	while True:
-		try:
-			# Dynamic construction of the URL with the required parameters
-			url = (
-				f"{Config.SONARR_HOST}/api/v3/queue?"
-				f"page={page}"
-				f"&pageSize=20"
-				f"&includeUnknownMovieItems=true"
-				f"&includeMovie=true"
-				f"&status=unknown"
-				f"&status=queued"
-				f"&status=paused"
-				f"&status=downloading"
-				f"&status=completed"
-				f"&status=failed"
-				f"&status=warning"
-				f"&status=delay"
-				f"&status=downloadClientUnavailable"
-				f"&status=fallback"
-			)
-			logger.debug(f"[DEBUG] Sonarr - Request URL: {url}")
-
-			response = requests.get(url, headers=headers)
-			logger.debug(f"[DEBUG] Sonarr - Status code received: {response.status_code}")
-
-			if response.status_code == 200:
-				data = response.json()
-				records = data.get('records', [])
-				logger.debug(f"[DEBUG] Sonarr - Number of records on the page {page}: {len(records)}")
-
-				# Compares the downloadIds of the current page with those of the previous page to avoid endless loops
-				current_page_data = [record.get('downloadId') for record in records]
-				logger.debug(f"[DEBUG] Sonarr - downloadId on the page {page}: {current_page_data}")
-
-				if current_page_data == previous_page_data:
-					logger.debug("[DEBUG] Sonarr - The downloadIds are the same as the previous page, I break the cycle.")
-					break
-
-				# Creates SonarrDownload objects for each record received
-				downloads = [SonarrDownload(record) for record in records]
-				all_downloads.extend(downloads)
-
-				# If the page contains less than 20 records, it is assumed to have reached the last page
-				if len(records) < 20:
-					logger.debug("[DEBUG] Sonarr - Less than 20 records, probably the last page. I interrupt the cycle.")
-					break
-
-				previous_page_data = current_page_data
-				page += 1
-			else:
-				logger.error(f"Failed to retrieve queue from Sonarr. Status code: {response.status_code}")
-				break
-		except Exception as e:
-			logger.error(f"Error retrieving queue from Sonarr: {e}")
-			break
-
-	logger.debug(f"[DEBUG] Sonarr - Totale download recuperati: {len(all_downloads)}")
-	return all_downloads
-
-def fetch_radarr_queue() -> List[RadarrDownload]:
-	"""Retrieve active downloads from Radarr, handling pagination with the new URL parameters"""
-	page = 1
-	all_downloads = []
-	previous_page_data = None
-
-	# Prepare headers for the request
-	headers = {
-		"accept": "application/json",
-		"X-Api-Key": Config.RADARR_API_KEY,
-	}
-
-	while True:
-		try:
-			# Construct the URL with the required parameters
-			url = (
-				f"{Config.RADARR_HOST}/api/v3/queue?"
-				f"page={page}"
-				f"&pageSize=10"
-				f"&includeUnknownMovieItems=true"
-				f"&includeMovie=true"
-				f"&status=unknown"
-				f"&status=queued"
-				f"&status=paused"
-				f"&status=downloading"
-				f"&status=completed"
-				f"&status=failed"
-				f"&status=warning"
-				f"&status=delay"
-				f"&status=downloadClientUnavailable"
-				f"&status=fallback"
-			)
-			logger.debug(f"[DEBUG] URL request: {url}")
-
-			response = requests.get(url, headers=headers)
-			logger.debug(f"[DEBUG] Status code received: {response.status_code}")
-
-			if response.status_code == 200:
-				data = response.json()
-				records = data.get('records', [])
-				logger.debug(f"[DEBUG] Number of records on the page {page}: {len(records)}")
-
-				# We compare the downloadId of the current page with those of the previous page
-				current_page_data = [record.get('downloadId') for record in records]
-				logger.debug(f"[DEBUG] downloadId in the page {page}: {current_page_data}")
-
-				if current_page_data == previous_page_data:
-					logger.debug("[DEBUG] The downloadIds are the same as the previous page, I break the cycle.")
-					break  # Exit the loop if the data is the same as the previous page
-
-				downloads = [RadarrDownload(record) for record in records]
-				all_downloads.extend(downloads)
-
-				if len(records) < 10:  # If the page contains less than 10 records, I consider the last page
-					logger.debug("[DEBUG] Less than 10 records, probably the last page. I interrupt the cycle.")
-					break
-
-				previous_page_data = current_page_data
-				page += 1
-			else:
-				logger.error(f"Failed to retrieve queue from Radarr. Status code: {response.status_code}")
-				break
-		except Exception as e:
-			logger.error(f"Error retrieving queue from Radarr: {e}")
-			break
-
-	logger.debug(f"[DEBUG] Totale download recuperati: {len(all_downloads)}")
-	return all_downloads
-
-def initialize_data():
-	emulerr_data = fetch_emulerr_data()
-	sonarr_queue = fetch_sonarr_queue()
-	radarr_queue = fetch_radarr_queue()
-	return emulerr_data, sonarr_queue, radarr_queue
-
 def main():
-	stall_checker = StallChecker()
+    stall_checker = StallChecker()
 
-	logger.info("=== Configuration Summary ===")
-	for attr, value in Config.__dict__.items():
-		if not callable(value) and not attr.startswith("__"):
-			logger.info(f"{attr}: {value}")
-	
-	logger.info("=== Configuration Summary ===")
+    logger.info("=== Configuration Summary ===")
+    for attr, value in Config.__dict__.items():
+        if not callable(value) and not attr.startswith("__"):
+            logger.info(f"{attr}: {value}")
+    logger.info("=== Configuration Summary ===")
 
-	while True:
-		try:
-			emulerr_data, sonarr_queue, radarr_queue = initialize_data()
+    while True:
+        try:
+            emulerr_data = fetch_emulerr_data()
 
-			# Retrieve all downloads and filter by progress and category
-			categories = []
-			if Config.RADARR_CATEGORY is not None:
-				categories.append(Config.RADARR_CATEGORY)
-			if Config.SONARR_CATEGORY is not None:
-				categories.append(Config.SONARR_CATEGORY)
+            # Apply special case checks
+            emulerr_downloads_to_remove, sonarr_radarr_downloads_to_remove, sonarr_queue, radarr_queue = check_special_cases(emulerr_data)
 
-			downloads = [d for d in emulerr_data if d.progress < 100 and d.category in categories]
+            for download in emulerr_downloads_to_remove + sonarr_radarr_downloads_to_remove:
+                print("\n")
+                # If it is an EmulerrDownload, we directly use the 'hash' and 'name' field.
+                if isinstance(download, EmulerrDownload):
+                    identifier = download.hash  # già nel formato corretto (32 caratteri)
+                    name = download.name
+                # If it is a SonarrDownload or RadarrDownload, we use the downloadId, removing the final 8 zeros if present.
+                elif isinstance(download, (SonarrDownload, RadarrDownload)):
+                    raw_id = download.downloadId
+                    identifier = raw_id[:-8] if raw_id.endswith("00000000") else raw_id
+                    name = download.title
+                else:
+                    logger.debug(f"Download type not recognized: {download}")
+                    continue
 
-			if downloads:  # Check if downloads is not empty
-				logger.debug(f"Checking {len(downloads)} eligible file{'s' if len(downloads) != 1 else ''}")
+                logger.debug(f"Removal in progress for: {name}, identifier: {identifier}")
 
-				current_hashes = {d.hash for d in downloads}
-				stall_checker.cleanup_warnings(current_hashes)
+                # Invokes the function that removes the download from the server.
+                result = emulerr_remove_download(identifier, Config.DRY_RUN)
 
-				# Apply special case checks
-				emulerr_downloads_to_remove, sonarr_radarr_downloads_to_remove = check_special_cases(downloads, sonarr_queue, radarr_queue)
+                if Config.DRY_RUN:
+                    logger.debug(f"DRY_RUN: Simulated removal of {name}. Response: {result}")
+                else:
+                    if isinstance(result, dict) and "error" in result:
+                        logger.error(f"Error in the removal of {name}: {result['error']}")
+                    else:
+                        logger.debug(f"Download {name} successfully removed. Response: {result}")
 
-				for download in emulerr_downloads_to_remove:
-					logger.debug(f"Download only on eMulerr to be removed: {download.name}, with hash: {download.hash}")
-					result = emulerr_remove_download(download.hash, Config.DRY_RUN)
-					if not Config.DRY_RUN:  # If it is not a simulation
-						if isinstance(result, dict) and 'error' in result:
-							logger.error(f"Error removing download: {result['error']}")
-						else:
-							logger.debug(f"Successfully removed download {download.name}. Response: {result}")
-					else:
-						logger.debug(f"DRY_RUN: Simulated removal of download {download.name}. Response: {result}")
-					downloads.remove(download)  # Removes the download from the list of downloads
+                # Removal from local emulerr_data list:
+                # If the download is an EmulerrDownload, we remove it directly.
+                if isinstance(download, EmulerrDownload):
+                    try:
+                        emulerr_data.remove(download)
+                        logger.debug(f"Removed correctly {name} (EmulerrDownload) from emulerr_data.")
+                    except ValueError:
+                        logger.error(f"Unable to remove {name} from emulerr_data.")
+                # If the download is of type SonarrDownload or RadarrDownload, we look for the corresponding EmulerrDownload.
+                # based on the hash (which is equivalent to the identifier).
+                elif isinstance(download, (SonarrDownload, RadarrDownload)):
+                    candidate = next(
+                        (d for d in emulerr_data if isinstance(d, EmulerrDownload) and d.hash == identifier),
+                        None
+                    )
+                    if candidate:
+                        try:
+                            emulerr_data.remove(candidate)
+                            logger.debug(f"Removed correctly {name} (found EmulerrDownload) from emulerr_data.")
+                        except ValueError:
+                            logger.error(f"Error in removing {name} from emulerr_data, candidate found: {candidate}")
+                    else:
+                        logger.error(f"Unable to remove {name} from emulerr_data: no EmulerrDownload found with hash {identifier}.")
 
-				# Removes downloads from Sonarr or Radarr
-				for download in sonarr_radarr_downloads_to_remove:
-					if download.category == Config.SONARR_CATEGORY:
-						logger.debug(f"Download on Sonarr to be removed: {download.name}, with hash: {download.hash}")
-						queue_item = next((item for item in sonarr_queue if item.downloadId == download.hash), None)
-						if queue_item:
-							remove_download(download, queue_item.id, Config.SONARR_HOST, Config.SONARR_API_KEY, Config.DRY_RUN)
-						else:
-							logger.error(f"Could not find queue item for download on Sonarr: {download.name}")
-					elif download.category == Config.RADARR_CATEGORY:
-						logger.debug(f"Download on Radarr to be removed: {download.name}, with hash: {download.hash}")
-						queue_item = next((item for item in radarr_queue if item.downloadId == download.hash), None)
-						if queue_item:
-							remove_download(download, queue_item.id, Config.RADARR_HOST, Config.RADARR_API_KEY, Config.DRY_RUN)
-						else:
-							logger.error(f"Could not find queue item for download on Radarr: {download.name}")
-					downloads.remove(download)  # Removes the download from the list of downloads
+            # Dividere emulerr_data in completati e incompleti
+            incomplete_downloads = [d for d in emulerr_data if d.progress < 100]
+            completed_downloads = [d for d in emulerr_data if d.progress == 100]
 
-				# Check the status once for each download
-				download_states = {}
-				for download in downloads:
-					is_stalled, stall_reason, check_count = stall_checker.check_status(download)
-					download_states[download.hash] = (is_stalled, stall_reason, check_count)
+            # Handle incomplete downloads
+            if incomplete_downloads:
+                logger.debug(f"\nChecking {len(incomplete_downloads)} incomplete file{'s' if len(incomplete_downloads) != 1 else ''}")
 
-				stalled_downloads = []
-				warning_downloads = []
+                current_hashes = {d.hash for d in incomplete_downloads}
+                stall_checker.cleanup_warnings(current_hashes)
 
-				# Debug output
-				if logger.getEffectiveLevel() == logging.DEBUG:
-					for download in downloads:
-						is_stalled, stall_reason, check_count = download_states[download.hash]
-						status = f"STALLED: {stall_reason}" if is_stalled else "Active"
+                # Check the status once for each download
+                download_states = {}
+                for download in incomplete_downloads:
+                    is_stalled, stall_reason, check_count = stall_checker.check_status(download)
+                    download_states[download.hash] = (is_stalled, stall_reason, check_count)
 
-						last_seen = "Never" if download.last_seen_complete == 0 else \
-							datetime.fromtimestamp(download.last_seen_complete).strftime('%Y-%m-%d %H:%M:%S')
+                stalled_downloads = []
+                warning_downloads = []
 
-				# Process each download
-				for download in downloads:
-					is_stalled, stall_reason, check_count = download_states[download.hash]
+                # Debug output
+                if logger.getEffectiveLevel() == logging.DEBUG:
+                    for download in incomplete_downloads:
+                        is_stalled, stall_reason, check_count = download_states[download.hash]
+                        status = f"STALLED: {stall_reason}" if is_stalled else "Active"
 
-					# If it's not a special case, add to stalled or warning lists
-					if is_stalled or check_count > Config.STALL_CHECKS:
-						stalled_downloads.append((download, check_count, stall_reason or "Max checks reached"))
-					elif check_count > 0:
-						warning_downloads.append((download, check_count, stall_reason or "Approaching stall threshold"))
+                        last_seen = "Never" if download.last_seen_complete == 0 else \
+                            datetime.fromtimestamp(download.last_seen_complete).strftime('%Y-%m-%d %H:%M:%S')
 
-				# Show warning downloads
-				if warning_downloads:
-					logger.debug(f"Warning downloads ({len(warning_downloads)}/{len(downloads)}):")
-					for download, count, warning_reason in warning_downloads:
-						logger.debug(f"{download.name} -> Warning ({count}/{Config.STALL_CHECKS}) - {warning_reason}")
-				else:  # If warning is empty
-					logger.debug("No warning downloads")
+                # Process each download
+                for download in incomplete_downloads:
+                    is_stalled, stall_reason, check_count = download_states[download.hash]
 
-				# Show stalled downloads
-				if stalled_downloads:
-					logger.debug(f"Stalled downloads ({len(stalled_downloads)}/{len(downloads)}):")
-					for download, check_count, stall_reason in stalled_downloads:
-						logger.info(f"{download.name} -> Warning ({check_count}/{Config.STALL_CHECKS}) - STALLED ({stall_reason})")
-						# Handle the stalled download
-						send_pushover_notification(f"Download {download.name} marked as stalled: {stall_reason}. Will be removed", dry_run=Config.DRY_RUN)
-						handle_stalled_download(download, sonarr_queue, radarr_queue, Config.DRY_RUN)
-				else:  # If stalled is empty
-					logger.debug("No stalled downloads")
+                    # If it's not a special case, add to stalled or warning lists
+                    if is_stalled or check_count > Config.STALL_CHECKS:
+                        stalled_downloads.append((download, check_count, stall_reason or "Max checks reached"))
+                    elif check_count > 0:
+                        warning_downloads.append((download, check_count, stall_reason or "Approaching stall threshold"))
 
-			else:  # If downloads is empty
-				logger.debug("No downloads to check.")
-			
-			logger.debug(f"Waiting {Config.CHECK_INTERVAL} minute(s) before next check...")
-			time.sleep(Config.CHECK_INTERVAL * 60)
+                # Show warning downloads
+                if warning_downloads:
+                    logger.debug(f"Warning downloads ({len(warning_downloads)}/{len(incomplete_downloads)}):")
+                    for download, count, warning_reason in warning_downloads:
+                        logger.debug(f"{download.name} -> Warning ({count}/{Config.STALL_CHECKS}) - {warning_reason}")
+                else:  # If warning is empty
+                    logger.debug("No warning downloads")
 
-		except KeyboardInterrupt:
-			logger.debug("Interrupted by user")
-			break
-		except Exception as e:
-			logger.error(f"Error in main loop: {e}")
-			time.sleep(Config.CHECK_INTERVAL * 60)
+                # Show stalled downloads
+                if stalled_downloads:
+                    logger.debug(f"Stalled downloads ({len(stalled_downloads)}/{len(incomplete_downloads)}):")
+                    for download, check_count, stall_reason in stalled_downloads:
+                        logger.info(f"{download.name} -> Warning ({check_count}/{Config.STALL_CHECKS}) - STALLED ({stall_reason})")
+                        # Handle the stalled download
+                        send_pushover_notification(f"Download {download.name} marked as stalled: {stall_reason}. Will be removed", dry_run=Config.DRY_RUN)
 
-# Call the validation function at the beginning of your program
+                        if Config.RADARR_CATEGORY is not None and download.category == Config.RADARR_CATEGORY:
+                            host = Config.RADARR_HOST
+                            api_key = Config.RADARR_API_KEY
+                            # Look for the RadarrDownload in the global queue.
+                            matching_item = next(
+                                (item for item in radarr_queue 
+                                 if (item.downloadId[:-8] == download.hash)),
+                                None
+                            )
+                        elif Config.SONARR_CATEGORY is not None and download.category == Config.SONARR_CATEGORY:
+                            host = Config.SONARR_HOST
+                            api_key = Config.SONARR_API_KEY
+                            # Search for SonarrDownload in the global queue.
+                            matching_item = next(
+                                (item for item in sonarr_queue 
+                                 if (item.downloadId[:-8] == download.hash)),
+                                None
+                            )
+                        else:
+                            logger.debug(f"Category not recognized for {download.name}: {download.category}")
+                            return
+
+                        if not matching_item:
+                            logger.error(f"Queue item not found for {download.name} (hash: {download.hash})")
+                            return
+
+                        # Extracts the id to be used for removal (e.g., RadarrDownload.id or SonarrDownload.id).
+                        queue_id = matching_item.id
+
+                        # Invokes the function that removes the download from the server.
+                        result = emulerr_remove_download(download.hash, Config.DRY_RUN)
+
+                        if Config.DRY_RUN:
+                            logger.debug(f"DRY_RUN: Simulated removal of {download.name}. Response: {result}")
+                        else:
+                            if isinstance(result, dict) and "error" in result:
+                                logger.error(f"Error in the removal of {download.name}: {result['error']}")
+                            else:
+                                logger.debug(f"Download {download.name} successfully removed. Response: {result}")
+
+                        handle_stalled_download(queue_id, host, api_key, Config.DRY_RUN)
+
+                else:  # If stalled is empty
+                    logger.debug("No stalled downloads")
+
+            else:  # If incomplete_downloads is empty
+                logger.debug("No incomplete downloads to check.")
+
+            # Handle completed downloads
+            if completed_downloads:
+                logger.debug(f"Checking {len(completed_downloads)} completed file{'s' if len(completed_downloads) != 1 else ''}")
+                for download in completed_downloads:
+                    logger.debug(f"Completed download: {download.name}")
+            else:
+                logger.debug("No completed downloads to check.")
+
+            logger.debug(f"Waiting {Config.CHECK_INTERVAL} minute(s) before next check...")
+            time.sleep(Config.CHECK_INTERVAL * 60)
+
+        except KeyboardInterrupt:
+            logger.debug("Interrupted by user")
+            break
+        except Exception as e:
+            logger.error(f"Error in main loop: {e}")
+            time.sleep(Config.CHECK_INTERVAL * 60)
+
+# Call the validation function at the beginning
 if __name__ == "__main__":
-	try:
-		Config.validate()
-		main()
-	except ValueError as e:
-		logger.error(f"Configuration error: {e}")
-		exit(1)
+    try:
+        Config.validate()
+        main()
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        exit(1)
