@@ -1,0 +1,31 @@
+name: Build eMulerrStalledChecker
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'eMulerrStalledChecker/**'
+      - '.github/workflows/build-emulerr-stalled.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: docker/setup-buildx-action@v3
+      
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./eMulerrStalledChecker
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            chryses/emulerr-stalled-checker:latest
+            chryses/emulerr-stalled-checker:${{ github.sha }}
