@@ -60,6 +60,11 @@ if log_to_file_path:
     except Exception as e:
         logger.error("Log file configuration error: %s", e)
 
+# ============= CUSTOM EXCEPTION =============
+class ConnectionFailureException(Exception):
+    """Raised when connection to Sonarr/Radarr fails"""
+    pass
+
 class Config:
     # All environment variables must be provided by docker-compose.yml
     DRY_RUN = os.environ.get('DRY_RUN', 'false').lower() == 'true'  # flags for dry running
@@ -253,21 +258,38 @@ def check_special_cases(emulerr_data):
             history_url = f"{host}/api/v3/history?page={page}&pageSize={page_size}&downloadId={full_hash}"
             try:
                 response = requests.get(history_url, headers=headers, timeout=10)
+                
+                # 🔥 GESTIONE ERRORI DI CONNESSIONE
                 if response.status_code != 200:
-                    logger.error(
-                        f"Error ({response.status_code}) in the request history for '{download.name}' from {history_url}"
-                    )
-                    break
+                    error_msg = f"HTTP {response.status_code} for '{download.name}' from {history_url}"
+                    logger.error(error_msg)
+                    raise ConnectionFailureException(error_msg)
 
                 page_data = response.json()
+                
+            except requests.exceptions.Timeout:
+                error_msg = f"Timeout connecting to {host} for '{download.name}'"
+                logger.error(error_msg)
+                raise ConnectionFailureException(error_msg)
+                
+            except requests.exceptions.ConnectionError:
+                error_msg = f"Connection refused to {host} for '{download.name}'"
+                logger.error(error_msg)
+                raise ConnectionFailureException(error_msg)
+                
+            except requests.exceptions.RequestException as e:
+                error_msg = f"Request failed for '{download.name}': {e}"
+                logger.error(error_msg)
+                raise ConnectionFailureException(error_msg)
+                
             except Exception as e:
-                logger.error("Exception during history request for '%s': %s", download.name, e)
-                break
+                error_msg = f"Unexpected error during history request for '{download.name}': {e}"
+                logger.error(error_msg)
+                raise ConnectionFailureException(error_msg)
 
             records = page_data.get("records", [])
             all_records.extend(records)
 
-            # Calculates the total number of pages based on totalRecords.
             total_records = page_data.get("totalRecords", 0)
             total_pages = math.ceil(total_records / page_size)
 
@@ -406,10 +428,27 @@ def check_special_cases(emulerr_data):
             )
             continue
 
-        history_records = get_history_records(download, host, api_key, full_hash)
+        # history_records = get_history_records(download, host, api_key, full_hash)
+
+        # 🔥 CONNECTION EXCEPTION HANDLING - INTERRUPTS THE LOOP
+        try:
+            history_records = get_history_records(download, host, api_key, full_hash)
+        except ConnectionFailureException as e:
+            logger.error(f"🚨 Connection failure detected for '{download.name}': {e}")
+            logger.warning(f"⚠️ Interrupting current check cycle. Will retry in {Config.CHECK_INTERVAL} minutes.")
+            
+            # 📢 Notifica Pushover (opzionale, come da tua scelta B)
+            send_pushover_notification(
+                f"⚠️ Connection failure to {client.upper()}\n"
+                f"Download: {download.name}\n"
+                f"Will retry in {Config.CHECK_INTERVAL} minutes",
+                dry_run=Config.DRY_RUN
+            )
+            
+            break  # ← INTERRUPTS THE FOR LOOP COMPLETELY
 
         valid_record = None
-        # Cerca il primo record valido
+        # Search for the first valid record
         for record in history_records:
             if record.get("eventType") != "grabbed":
                 continue
