@@ -28,6 +28,5 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/emulerr-stalled-checker:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/emulerr-stalled-checker:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
