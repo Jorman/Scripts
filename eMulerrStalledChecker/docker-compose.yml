@@ -1,8 +1,9 @@
 services:
   emulerr-stalled-checker:
-    build: .
+    image: chryses/emulerr-stalled-checker:latest
     container_name: emulerr-stalled-checker
     environment:
+      - TZ=Europe/Rome
       - CHECK_INTERVAL=10 # in minutes
       - EMULERR_HOST=http://10.0.0.100:3000
       - STALL_CHECKS=30 # number of checks before marking as stalled
@@ -11,6 +12,7 @@ services:
       - DELETE_IF_UNMONITORED_SERIE=false # delete if the serie is not monitored
       - DELETE_IF_UNMONITORED_SEASON=false # delete if the season is not monitored
       - DELETE_IF_UNMONITORED_EPISODE=true # delete if the episode is not monitored
+      - DELETE_IF_UNMONITORED_MOVIE=true # delete if the movie is not monitored
       - DELETE_IF_ONLY_ON_EMULERR=false # delete if the download is only on eMulerr but not inside *Arr, apply only for downloads with *Arr eMulerr category
       - PUSHOVER_USER_KEY=***
       - PUSHOVER_APP_TOKEN=***
@@ -24,6 +26,8 @@ services:
       - SONARR_HOST=http://10.0.0.100:8989
       - SONARR_API_KEY=***
       - SONARR_CATEGORY=tv-sonarr-eMulerr # Sonarr category for eMulerr
+    volumes:
+      - /tmp:/tmp
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://10.0.0.100:3000"]
