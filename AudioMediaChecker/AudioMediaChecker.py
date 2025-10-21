@@ -36,9 +36,9 @@ def _setup_logger(verbose=False):
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
     return logger
 
-def find_files(folder_path: Path, max_depth: int, current_level: int = 0):
+def find_files(folder_path: Path, max_depth: int, current_level: int = 0, dry_run: bool = False):
     """
-    Search for files with the .mkv extension in 'folder_path' by exploring to the specified depth.
+    Search for video files in 'folder_path' by exploring to the specified depth.
     
     Arguments:
       folder_path (Path): starting directory.
@@ -47,21 +47,37 @@ def find_files(folder_path: Path, max_depth: int, current_level: int = 0):
                        If > 0, only sub-levels such that current_level < max_depth are explored,
                        where the starting directory equals level 0.
       current_level (int): current level in recursion (not to be set from outside).
+      dry_run (bool): if True, searches for all video formats; if False, only .mkv files.
 
     Returns:
       list[Path]: files found.
     """
+    # I define extensions by mode
+    if dry_run:
+        # In dry-run I search for all video formats supported by ffmpeg
+        extensions = ['*.mkv', '*.mp4', '*.avi', '*.mov', '*.m4v', '*.flv', '*.wmv', '*.webm']
+    else:
+        # In normal mode I only search for mkv
+        extensions = ['*.mkv']
+    
     # If max_depth is 0, we perform an unlimited recursive search.
     if max_depth == 0:
-        return list(folder_path.rglob('*.mkv'))
+        files = []
+        for ext in extensions:
+            files.extend(folder_path.rglob(ext))
+        return files
     
-    files = list(folder_path.glob('*.mkv'))
+    # Searching for files in the current directory for all extensions
+    files = []
+    for ext in extensions:
+        files.extend(folder_path.glob(ext))
     
     # If we have not reached the maximum level, we explore the subfolders.
     if current_level < max_depth:
         for subdir in folder_path.iterdir():
             if subdir.is_dir():
-                files.extend(find_files(subdir, max_depth, current_level + 1))
+                files.extend(find_files(subdir, max_depth, current_level + 1, dry_run))
+    
     return files
 
 class AudioMediaChecker:
@@ -92,7 +108,11 @@ class AudioMediaChecker:
         self.gpu = gpu
         self.logger = logger if logger else _setup_logger(verbose)
 
-        if self.file_path.suffix.lower() != '.mkv':
+        # if self.file_path.suffix.lower() != '.mkv':
+        #     raise ValueError(f"Formato file non supportato: {self.file_path}")
+
+        # In dry-run mode I accept all video formats, otherwise only mkv
+        if not self.dry_run and self.file_path.suffix.lower() != '.mkv':
             raise ValueError(f"Formato file non supportato: {self.file_path}")
 
         # Get the multimedia information once and save it.
@@ -339,7 +359,7 @@ class AudioMediaChecker:
 
     def log_stream_info(self, stream):
         """
-        Logga le informazioni della traccia audio.
+        Logs the audio track information.
         """
         bitrate = stream.get('bit_rate')
         info = {
@@ -437,6 +457,9 @@ class AudioMediaChecker:
             self.logger.info(f"No language to set by track {stream_index}")
             return
 
+        # I check if the file is an mkv
+        is_mkv = self.file_path.suffix.lower() == '.mkv'
+
         cmd = [
             'mkvpropedit',
             str(self.file_path),
@@ -445,13 +468,19 @@ class AudioMediaChecker:
         ]
 
         if not self.dry_run:
-            try:
-                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-                self.logger.info(f"Updated language tag for track {stream_index}: {language}")
-            except subprocess.CalledProcessError as e:
-                self.logger.error(f"Error running mkvpropedit: {e.stderr}")
+            if is_mkv:
+                try:
+                    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                    self.logger.info(f"Updated language tag for track {stream_index}: {language}")
+                except subprocess.CalledProcessError as e:
+                    self.logger.error(f"Error running mkvpropedit: {e.stderr}")
+            else:
+                self.logger.info(f"File {self.file_path.name} is not MKV format - language tag update skipped")
         else:
-            self.logger.info(f"[DRY RUN] Update language tag per track {stream_index}: {language}")
+            if is_mkv:
+                self.logger.info(f"[DRY RUN] Update language tag per track {stream_index}: {language}")
+            else:
+                self.logger.info(f"[DRY RUN] File {self.file_path.name} is not MKV format - would not be modified in normal mode")
 
     def detect_language(self, audio_file):
         """
@@ -606,7 +635,8 @@ def main():
 
         if args.file:
             file_path = Path(args.file)
-            if file_path.suffix.lower() != '.mkv':
+            # In normal mode I accept only mkv, in dry-run all video formats
+            if not args.dry_run and file_path.suffix.lower() != '.mkv':
                 print(f"Error: the file must be in MKV format. File provided: {file_path}")
                 sys.exit(1)
             files_to_process.append(file_path)
@@ -621,11 +651,17 @@ def main():
             # and then a NON-recursive search will be done (only in the source directory)
             if args.recursive is None:
                 # In this case we consider only the indicated directory (no recursion)
-                depth = 0  # We can decide to handle it as non-recursive
-                files_to_process.extend(list(folder_path.glob('*.mkv')))
+                if args.dry_run:
+                    # In dry-run I look for all video formats
+                    extensions = ['*.mkv', '*.mp4', '*.avi', '*.mov', '*.m4v', '*.flv', '*.wmv', '*.webm']
+                    for ext in extensions:
+                        files_to_process.extend(list(folder_path.glob(ext)))
+                else:
+                    # In normal mode I only search for mkv
+                    files_to_process.extend(list(folder_path.glob('*.mkv')))
             else:
                 depth = args.recursive
-                files_to_process.extend(find_files(folder_path, depth))
+                files_to_process.extend(find_files(folder_path, depth, dry_run=args.dry_run))
 
         if not files_to_process:
             print("No MKV files found.")
@@ -665,7 +701,6 @@ def main():
                 )
                 checker.process_file()
                 pbar.update(1)  # Update the progress bar after processing the file
-
 
         logger.info("Script successfully completed.")
         sys.exit(0)
