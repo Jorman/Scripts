@@ -40,8 +40,11 @@ class QBittorrentManager:
         self.real_path = config.get('real_path', '')
         self.enable_recheck = config.get('enable_recheck', True)
         self.enable_orphan_check = config.get('enable_orphan_check', True)
-        self.orphan_states = config.get('orphan_states', [])
+        self.orphan_states = [state.lower() for state in config.get('orphan_states', [])]
         self.min_peers = config.get('min_peers', 1)
+
+        self.enable_auto_update_trackers = config.get('enable_auto-update_trackers', False)
+        self.auto_update_trackers_script = config.get('auto-update_trackers_script', '')
 
         self.base_url = f"{self.host}:{self.port}"
         self.session = requests.Session()
@@ -187,9 +190,34 @@ class QBittorrentManager:
                     urljoin(self.base_url, 'api/v2/torrents/removeTrackers'),
                     data={'hash': torrent_hash, 'urls': tracker}
                 )
-                print(f"- Bad tracker{'s' if len(trackers) > 1 else ''} removed")
+            print(f"- Bad tracker{'s' if len(trackers) > 1 else ''} removed")
         except Exception as e:
             print(f"Failed to remove trackers: {str(e)}")
+
+    def run_tracker_update_script(self, torrent_hash: str, torrent_name: str) -> None:
+        """Execute tracker update script for the specified torrent using the torrent name"""
+        try:
+            if self.dry_run:
+                print(f"- [DRY-RUN] Would run tracker update script for torrent: {torrent_name}")
+                return
+            
+            import subprocess
+            
+            # Utilizziamo il nome del torrent con l'argomento -n
+            command = [self.auto_update_trackers_script, "-n", torrent_name]
+            
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True
+            )
+                        
+            if result.returncode == 0:
+                print(f"- Tracker update script executed successfully")
+            else:
+                print(f"- Tracker update script failed: {result.stderr.strip() or result.stdout.strip()}")
+        except Exception as e:
+            print(f"Failed to run tracker update script: {str(e)}")
 
     def _print_configuration(self) -> None:
         """Print the current configuration"""
@@ -206,6 +234,10 @@ class QBittorrentManager:
         print(f"- Enable recheck: {self.enable_recheck}")
         print(f"- Enable orphan check: {self.enable_orphan_check}")
         print(f"- Orphan states: {self.orphan_states if self.orphan_states else 'not set'}")
+
+        print(f"- Auto-update trackers: {self.enable_auto_update_trackers}")
+        if self.enable_auto_update_trackers:
+            print(f"- Update script: {self.auto_update_trackers_script}")
 
         if self.dry_run:
             print(f"{Fore.GREEN}- DRY-RUN mode enabled{Style.RESET_ALL}")
@@ -233,8 +265,8 @@ class QBittorrentManager:
             # Control recheck
             if self.enable_recheck:
                 print("- Checking for errors ->", end=" ")
-                if torrent.get('state') == "error":
-                    print(f"{Fore.RED}errors found{Style.RESET_ALL}")
+                if torrent.get('state') in ["error", "missingFiles"]:
+                    print(f"{Fore.RED}errors found, forcing recheck{Style.RESET_ALL}")
                     self.recheck_torrent(torrent['hash'])
                 else:
                     print(f"{Fore.GREEN}no errors found{Style.RESET_ALL}")
@@ -249,7 +281,7 @@ class QBittorrentManager:
                         print(f"   {tracker} -> {Fore.RED}{error}{Style.RESET_ALL}")
                     self.remove_trackers(torrent['hash'], bad_trackers)
                 else:
-                    print("no bad trackers found")
+                    print(f"{Fore.GREEN}no bad trackers found{Style.RESET_ALL}")
 
             # Orphan check
             if self.enable_orphan_check and is_private:
@@ -273,6 +305,14 @@ class QBittorrentManager:
                     self.delete_torrent(torrent['hash'])
                 else:
                     print("no orphan detected")
+
+            # Tracker update script
+            if self.enable_auto_update_trackers and not is_private and torrent['progress'] != 1:
+                print("- Running tracker update script ->", end=" ")
+                if self.auto_update_trackers_script:
+                    self.run_tracker_update_script(torrent['hash'], torrent['name'])
+                else:
+                    print("script path not configured")
 
             # Controllo hardlink
             content_path = torrent.get('content_path', '')
@@ -336,6 +376,7 @@ orphan_states:
   - "unregistered"
   - "not registered"
   - "not found"
+  - "not working"
 
 # Minimum number of peers before considering a torrent orphaned.
 # Default: 1
