@@ -203,7 +203,7 @@ class QBittorrentManager:
             
             import subprocess
             
-            # Utilizziamo il nome del torrent con l'argomento -n
+            # We use the name of the torrent with the argument -n
             command = [self.auto_update_trackers_script, "-n", torrent_name]
             
             result = subprocess.run(
@@ -291,8 +291,12 @@ class QBittorrentManager:
                     params={'hash': torrent['hash']}
                 ).json()
 
+                # Filtra i trackers speciali (DHT, PeX, LSD)
+                special_trackers = ['** [DHT] **', '** [PeX] **', '** [LSD] **']
+                real_trackers = [t for t in trackers if t.get('url', '') not in special_trackers]
+
                 is_orphan = False
-                for tracker in trackers:
+                for tracker in real_trackers:
                     if any(state in tracker.get('msg', '').lower() for state in self.orphan_states):
                         if torrent.get('num_leechs', 0) < self.min_peers:
                             is_orphan = True
@@ -377,6 +381,7 @@ orphan_states:
   - "not registered"
   - "not found"
   - "not working"
+  - "torrent has been deleted"
 
 # Minimum number of peers before considering a torrent orphaned.
 # Default: 1
