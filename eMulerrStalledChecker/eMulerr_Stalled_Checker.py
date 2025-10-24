@@ -10,6 +10,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from urllib3.util.retry import Retry
 import requests
+import apprise
 from requests.adapters import HTTPAdapter
 from requests import Session
 
@@ -99,9 +100,10 @@ class Config:
     SONARR_API_KEY = os.environ.get('SONARR_API_KEY', None)
     SONARR_CATEGORY = os.environ.get('SONARR_CATEGORY', None)  # category for Sonarr downloads
 
-    # Pushover configuration
-    PUSHOVER_APP_TOKEN = os.environ.get('PUSHOVER_APP_TOKEN', '')
-    PUSHOVER_USER_KEY = os.environ.get('PUSHOVER_USER_KEY', '')
+    # Notification configuration
+    APPRISE_URLS = os.getenv('APPRISE_URLS', '')
+    PUSHOVER_USER_KEY = os.getenv('PUSHOVER_USER_KEY', '')
+    PUSHOVER_APP_TOKEN = os.getenv('PUSHOVER_APP_TOKEN', '')
 
     # Assigns API_URL directly in the body of the class
     API_URL = f"{os.environ.get('EMULERR_HOST', '')}{EMULERR_ENDPOING}"
@@ -151,6 +153,39 @@ class Config:
             if host_value and not host_value.startswith(('http://', 'https://')):
                 logger.error("Environment variable %s must start with 'http://' or 'https://'.", host_var)
                 sys.exit(1)
+
+    @staticmethod
+    def get_notification_urls():
+        """
+        Get Apprise notification URLs.
+
+        Priority:
+        1. APPRISE_URLS if set
+        2. Auto-convert PUSHOVER_* variables to Apprise format if both are set
+
+        Returns:
+            list: List of Apprise-compatible notification URLs
+        """
+        urls = []
+
+        # Ora possiamo usare Config. in modo pulito
+        if Config.APPRISE_URLS:
+            urls.extend([
+                u.strip() 
+                for u in Config.APPRISE_URLS.replace(',', ' ').split() 
+                if u.strip()
+            ])
+            logger.info(f"Using APPRISE_URLS: {len(urls)} notification service(s) configured")
+            return urls
+
+        if Config.PUSHOVER_USER_KEY and Config.PUSHOVER_APP_TOKEN:
+            pushover_url = f"pover://{Config.PUSHOVER_USER_KEY}@{Config.PUSHOVER_APP_TOKEN}"
+            urls.append(pushover_url)
+            logger.info("Auto-converting PUSHOVER_* environment variables to Apprise format")
+            logger.info("Tip: Consider using APPRISE_URLS=pover://user_key@app_token for better clarity")
+            return urls
+
+        return urls
 
 class EmulerrDownload:
     def __init__(self, file_data: dict):
@@ -438,7 +473,7 @@ def check_special_cases(emulerr_data):
             logger.warning(f"⚠️ Interrupting current check cycle. Will retry in {Config.CHECK_INTERVAL} minutes.")
             
             # 📢 Notifica Pushover (opzionale, come da tua scelta B)
-            send_pushover_notification(
+            send_notification(
                 f"⚠️ Connection failure to {client.upper()}\n"
                 f"Download: {download.name}\n"
                 f"Will retry in {Config.CHECK_INTERVAL} minutes",
@@ -589,24 +624,71 @@ def handle_stalled_download(name: str, queue_id: str, host: str, api_key: str, d
         logger.exception("Exception in marking the download as failed %s: %s", name, e)
         return False
 
-def send_pushover_notification(message: str, dry_run: bool = False):
-    if dry_run:
-        logger.debug("Dry run is active. Pushover notification not sent: %s", message)
-        return
 
-    if Config.PUSHOVER_APP_TOKEN and Config.PUSHOVER_USER_KEY:
-        try:
-            response = requests.post("https://api.pushover.net/1/messages.json", data={
-                "token": Config.PUSHOVER_APP_TOKEN,
-                "user": Config.PUSHOVER_USER_KEY,
-                "message": message
-            })
-            response.raise_for_status()
-            logger.debug("Pushover notification sent successfully: %s", message)
-        except requests.RequestException as e:
-            logger.error("Failed to send Pushover notification: %s", str(e))
-    else:
-        logger.warning("Pushover notification not sent because PUSHOVER_APP_TOKEN or PUSHOVER_USER_KEY is not set.")
+def send_notification(message: str, dry_run: bool = False, title: str = "eMulerr Stalled Checker"):
+    """
+    Send notification using Apprise.
+    
+    Supports 70+ notification services via Apprise.
+    Automatically converts legacy PUSHOVER_* variables to Apprise format.
+    
+    Args:
+        message (str): Notification message body
+        dry_run (bool): If True, log but don't send notification
+        title (str): Notification title
+        
+    Returns:
+        bool: True if notification sent successfully, False otherwise
+    """
+    if dry_run:
+        logging.debug(f"[DRY RUN] Notification not sent: {message}")
+        return True
+
+    notification_urls = Config.get_notification_urls()
+    
+    if not notification_urls:
+        logging.warning(
+            "No notification service configured. "
+            "Set APPRISE_URLS environment variable. "
+            "Example: APPRISE_URLS=pover://user_key@app_token"
+        )
+        return False
+
+    try:
+        # Create Apprise instance
+        apobj = apprise.Apprise()
+        
+        # Add all configured notification URLs
+        added_count = 0
+        for url in notification_urls:
+            if apobj.add(url):
+                added_count += 1
+                logging.debug(f"Added notification service: {url[:20]}...")
+            else:
+                logging.warning(f"Failed to add invalid notification URL: {url[:30]}...")
+        
+        if added_count == 0:
+            logging.error("No valid notification services could be added")
+            return False
+        
+        logging.debug(f"Sending notification to {added_count} service(s)...")
+        
+        # Send notification
+        success = apobj.notify(
+            body=message,
+            title=title
+        )
+        
+        if success:
+            logging.info(f"Notification sent successfully to {added_count} service(s)")
+            return True
+        else:
+            logging.error("Failed to send notification to one or more services")
+            return False
+            
+    except Exception as e:
+        logging.error(f"Error sending notification via Apprise: {str(e)}", exc_info=True)
+        return False
 
 class StallChecker:
     def __init__(self):
@@ -684,11 +766,11 @@ class StallChecker:
         return False, "", 0
 
     def cleanup_warnings(self, current_hashes: set[str], downloads_map: dict):
-        # Crea un dizionario di mapping hash -> nome prima della pulizia
+        # Create a hash -> name mapping dictionary before cleaning
         if not hasattr(self, 'hash_to_name_map'):
             self.hash_to_name_map = {}
 
-        # Assicuriamoci che stalled_hashes esista
+        # Let's make sure that stalled_hashes exists
         if not hasattr(self, 'stalled_hashes'):
             self.stalled_hashes = set()
 
@@ -892,7 +974,7 @@ def main():
                     for download, check_count, stall_reason in stalled_downloads:
                         logger.info("%s -> Stalled (%s/%s warnings) - %s", download.name, check_count, Config.STALL_CHECKS, stall_reason)
 
-                        send_pushover_notification(f"Download {download.name} marked as stalled: {stall_reason}. Will be removed", dry_run=Config.DRY_RUN)
+                        send_notification(f"Download {download.name} marked as stalled: {stall_reason}. Will be removed", dry_run=Config.DRY_RUN)
 
                         if Config.RADARR_CATEGORY is not None and download.category == Config.RADARR_CATEGORY:
                             host = Config.RADARR_HOST

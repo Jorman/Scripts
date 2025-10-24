@@ -1,21 +1,34 @@
 services:
   emulerr-stalled-checker:
-    image: chryses/emulerr-stalled-checker:latest
+    build: .
     container_name: emulerr-stalled-checker
     environment:
-      - TZ=Europe/Rome
+      - TZ=Europe/Rome # set your timezone
       - CHECK_INTERVAL=10 # in minutes
       - EMULERR_HOST=http://10.0.0.100:3000
-      - STALL_CHECKS=30 # number of checks before marking as stalled
-      - STALL_DAYS=20 # days if the download has been never seen completed
+      - STALL_CHECKS=15 # number of checks before marking as stalled
+      - STALL_DAYS=15 # days if the download has been never seen completed
       - RECENT_DOWNLOAD_GRACE_PERIOD=30 # how many minutes wait before checking if the download, apply only if the download is recent
       - DELETE_IF_UNMONITORED_SERIE=false # delete if the serie is not monitored
       - DELETE_IF_UNMONITORED_SEASON=false # delete if the season is not monitored
       - DELETE_IF_UNMONITORED_EPISODE=true # delete if the episode is not monitored
       - DELETE_IF_UNMONITORED_MOVIE=true # delete if the movie is not monitored
       - DELETE_IF_ONLY_ON_EMULERR=false # delete if the download is only on eMulerr but not inside *Arr, apply only for downloads with *Arr eMulerr category
-      - PUSHOVER_USER_KEY=***
-      - PUSHOVER_APP_TOKEN=***
+
+      # Notification configuration using Apprise (supports 70+ services)
+      # Recommended: Use APPRISE_URLS for maximum flexibility
+      # Format examples:
+      #   Pushover:  pover://user_key@app_token
+      #   Telegram:  tgram://bot_token/chat_id
+      #   Discord:   discord://webhook_id/webhook_token
+      #   Multiple:  pover://key@token discord://webhook/id (space-separated)
+      - APPRISE_URLS=pover://your_user_key@your_app_token
+
+      # Legacy Pushover support (auto-converted to Apprise internally)
+      # You can still use these instead of APPRISE_URLS if you prefer
+      # - PUSHOVER_USER_KEY=your_pushover_user_key
+      # - PUSHOVER_APP_TOKEN=your_pushover_app_token
+
       - LOG_LEVEL=info # or debug, warning, error, critical
       - LOG_TO_FILE=/path/to/logfile # optional, by default no log file is created, if set, the file will be created in the path specified, note volume must be mounted to the path
       - DRY_RUN=false
@@ -26,8 +39,6 @@ services:
       - SONARR_HOST=http://10.0.0.100:8989
       - SONARR_API_KEY=***
       - SONARR_CATEGORY=tv-sonarr-eMulerr # Sonarr category for eMulerr
-    volumes:
-      - /tmp:/tmp
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://10.0.0.100:3000"]
