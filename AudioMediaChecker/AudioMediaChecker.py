@@ -108,8 +108,8 @@ class AudioMediaChecker:
         self.gpu = gpu
         self.logger = logger if logger else _setup_logger(verbose)
 
-        # if self.file_path.suffix.lower() != '.mkv':
-        #     raise ValueError(f"Formato file non supportato: {self.file_path}")
+        # Whisper model cache (lazy-loaded on first use)
+        self._whisper = None
 
         # In dry-run mode I accept all video formats, otherwise only mkv
         if not self.dry_run and self.file_path.suffix.lower() != '.mkv':
@@ -120,6 +120,30 @@ class AudioMediaChecker:
         self.total_duration = float(self.media_info['format']['duration'])
 
         self._validate_model_ram()
+
+    def _lazy_load_whisper(self):
+        """
+        Instantiate and cache the Whisper model on first use.
+        Reuses the same instance for subsequent transcriptions.
+        """
+        if self._whisper is None:
+            device = 'cuda' if self.gpu else 'cpu'
+            compute_type = self._best_compute_type()
+            cpu_threads = self._optimal_cpu_threads() if device == 'cpu' else 0
+
+            self.logger.info(f"Loading Whisper model '{self.whisper_model_size}' on {device}...")
+            self.logger.debug(f"Whisper configuration: compute_type={compute_type}, threads={cpu_threads or 'auto'}")
+
+            self._whisper = WhisperModel(
+                self.whisper_model_size,
+                device=device,
+                compute_type=compute_type,
+                cpu_threads=cpu_threads,
+                download_root="/models"  # persist weights if volume-mapped
+            )
+
+            self.logger.info("Whisper model loaded.")
+        return self._whisper
 
     def _validate_model_ram(self):
         """
@@ -484,7 +508,7 @@ class AudioMediaChecker:
 
     def detect_language(self, audio_file):
         """
-        Performs language detection using the Whisper model.
+        Performs language detection using the (cached) Whisper model.
 
         Arguments:
           audio_file (file-like): audio sample in BytesIO format.
@@ -492,22 +516,9 @@ class AudioMediaChecker:
         Returns:
           tuple: (language detected (str), confidence (float))
         """
-        model_size = self.whisper_model_size
-        device = 'cuda' if self.gpu else 'cpu'
-        compute_type = self._best_compute_type()
-        cpu_threads = self._optimal_cpu_threads() if device == 'cpu' else 0
-
         self.logger.info("Beginning language detection")
-        self.logger.debug(f"Whisper configuration for {device}: compute_type={compute_type}, threads={cpu_threads or 'auto'}")
 
-        # NOTE: here you load the model every time you call. It could be improved by loading it only once,
-        # e.g., by saving it in self.whisper_model on first use.
-        model = WhisperModel(model_size, 
-                              device=device, 
-                              compute_type=compute_type, 
-                              cpu_threads=cpu_threads,
-                              download_root="/models")
-
+        model = self._lazy_load_whisper()
         segments, info = model.transcribe(audio_file, language=None, beam_size=5)
         detected_language = info.language
 
@@ -515,8 +526,6 @@ class AudioMediaChecker:
             self.logger.debug("Recognized text:")
             for segment in segments:
                 self.logger.debug(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
-
-        if self.verbose:
             self.logger.info(f"Detected language: {detected_language} with confidence: {info.language_probability:.2f}")
 
         return detected_language, info.language_probability
