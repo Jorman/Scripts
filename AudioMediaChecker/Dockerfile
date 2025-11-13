@@ -20,4 +20,4 @@ COPY . .
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-CMD ["python3", "AudioMediaChecker.py"]
+ENTRYPOINT ["python3", "AudioMediaChecker.py"]
