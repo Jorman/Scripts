@@ -15,17 +15,19 @@ import psutil
 from tqdm import tqdm
 import datetime
 
-def _setup_logger(verbose=False):
+def _setup_logger(verbose=False, json=False):
     """
     Configures and returns a logger with stream on stdout.
     
     Arguments:
       verbose (bool): if True, sets the DEBUG level, otherwise INFO.
+      json (bool): if True, disables all logging output.
 
     Returns:
       logging.Logger: the configured logger.
     """
     logger = logging.getLogger(__name__)
+    
     # Evita duplicazioni di log se il logger è già configurato
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
@@ -33,7 +35,13 @@ def _setup_logger(verbose=False):
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.propagate = False
-    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    
+    if json:
+        # In json mode, we set a very high level to disable all logs.
+        logger.setLevel(logging.CRITICAL + 1)  # Level higher than CRITICAL, so nothing is logged
+    else:
+        logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    
     return logger
 
 def find_files(folder_path: Path, max_depth: int, current_level: int = 0, dry_run: bool = False):
@@ -82,7 +90,7 @@ def find_files(folder_path: Path, max_depth: int, current_level: int = 0, dry_ru
 
 class AudioMediaChecker:
     def __init__(self, file_path, check_all_tracks=False, verbose=False, dry_run=False, 
-                 force_language=None, confidence_threshold=65, model='base', gpu=False, logger=None):
+                 force_language=None, confidence_threshold=65, model='base', gpu=False, logger=None, json_output=False):
         """
         Initialize the media file controller.
 
@@ -107,6 +115,7 @@ class AudioMediaChecker:
         self.whisper_model_size = model
         self.gpu = gpu
         self.logger = logger if logger else _setup_logger(verbose)
+        self.json_output = json
 
         # Whisper model cache (lazy-loaded on first use)
         self._whisper = None
@@ -195,8 +204,11 @@ class AudioMediaChecker:
         if self.interrupted:
             return False
 
-        # self.logger.info(f"File analysis: {self.file_path}")
-        tqdm.write(f" - File analysis: {self.file_path}")
+        # Initialize the list to collect the results (only in json mode)
+        json_results = [] if self.json_output else None
+
+        if not self.json_output:
+            tqdm.write(f" - File analysis: {self.file_path}")
         
         if not self.file_path.exists():
             self.logger.error("File not found")
@@ -286,6 +298,21 @@ class AudioMediaChecker:
                         f"Language detected: {detected_lang}, Confidence: {confidence_percent:.2f}% >= {self.confidence_threshold}%"
                     )
                     self.handle_detection_result(ffprobe_index, detected_lang, confidence_percent / 100)
+
+                    # Collect results in json mode
+                    if self.json_output:
+                        # Converti il codice lingua da ISO 639-1 (2 char) a ISO 639-2 (3 char)
+                        try:
+                            detected_lang_3 = pycountry.languages.get(alpha_2=detected_lang).alpha_3
+                        except (AttributeError, KeyError):
+                            self.logger.warning(f"Language code not found for {detected_lang}. Using the original code.")
+                            detected_lang_3 = detected_lang
+                        
+                        json_results.append({
+                            "track": ffprobe_index,
+                            "language": detected_lang_3
+                        })
+
                     self.logger.info("--" * 30)
                     continue
 
@@ -348,11 +375,37 @@ class AudioMediaChecker:
                             f"Language detected: {detected_lang}, Confidence: {confidence_percent:.2f}% >= {self.confidence_threshold}%"
                         )
                         self.handle_detection_result(ffprobe_index, detected_lang, confidence_percent / 100)
+
+                        # Collect results in json mode
+                        if self.json_output:
+                            # Converti il codice lingua da ISO 639-1 (2 char) a ISO 639-2 (3 char)
+                            try:
+                                detected_lang_3 = pycountry.languages.get(alpha_2=detected_lang).alpha_3
+                            except (AttributeError, KeyError):
+                                self.logger.warning(f"Language code not found for {detected_lang}. Using the original code.")
+                                detected_lang_3 = detected_lang
+                            
+                            json_results.append({
+                                "track": ffprobe_index,
+                                "language": detected_lang_3
+                            })
+
                         self.logger.info("--" * 30)
                         break
 
                     self.logger.info(f"Attempt {attempt} failed. Weighted average: {confidence_percent:.2f}% < {self.confidence_threshold}%")
                     self.logger.info("--" * 30)
+
+                # If no attempt was successful, add "und"
+                if not attempt_successful and self.json_output:
+                    json_results.append({
+                        "track": ffprobe_index,
+                        "language": "und"
+                    })
+
+            # Print final JSON only in json mode
+            if self.json_output and json_results:
+                print(json.dumps(json_results, indent=2))
 
             return True
 
@@ -595,6 +648,8 @@ def main():
                             help='Analyzes all audio tracks, not just those without tags')
         parser.add_argument('--verbose', action='store_true', 
                             help='Enable detailed logging')
+        parser.add_argument('--json', action='store_true', 
+                            help='Output results in JSON format with minimal information (track number and language only)')
         parser.add_argument('--dry-run', action='store_true',
                             help='Simulates operations without modifying the file')
         parser.add_argument('--force-language', nargs='?', const='', 
@@ -610,7 +665,7 @@ def main():
 
         args = parser.parse_args()
 
-        logger = _setup_logger(args.verbose)
+        logger = _setup_logger(args.verbose, args.json)
 
         if args.help_languages:
             print("Available language codes (ISO 639-2 format):")
@@ -621,6 +676,10 @@ def main():
 
         if not args.file and not args.folder:
             parser.error("the following arguments are required: --file or --folder")
+
+        # Check incompatibility between --verbose and --json
+        if args.verbose and args.json:
+            parser.error("--verbose and --json cannot be used together")
 
         # Forced language code validation
         if args.force_language:
@@ -683,20 +742,39 @@ def main():
                 'force_language': args.force_language if args.force_language is not None else 'False',
                 'confidence_threshold': args.confidence,
                 'model': args.model,
-                'gpu': args.gpu
+                'gpu': args.gpu,
+                'json': args.json
             }
             logger.info("Execution parameters:")
             for param, value in params.items():
                 logger.info(f"  {param}: {value}")
             logger.info("--" * 30)
 
-        with tqdm(total=len(files_to_process), desc=" - INFO - Processing files", unit="file", initial=1, leave=False) as pbar:
+        # Progress bar visible only if NOT in json mode
+        if not args.json:
+            with tqdm(total=len(files_to_process), desc=" - INFO - Processing files", unit="file", initial=1, leave=False) as pbar:
+                for file_path in files_to_process:
+                    now = datetime.datetime.now()
+                    timestamp = now.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
+                    pbar.set_description(f"{timestamp} - INFO - Processing files")
+
+                    checker = AudioMediaChecker(
+                        str(file_path),
+                        check_all_tracks=args.check_all_tracks,
+                        verbose=args.verbose,
+                        dry_run=args.dry_run,
+                        force_language=args.force_language,
+                        confidence_threshold=args.confidence,
+                        model=args.model,
+                        gpu=args.gpu,
+                        logger=logger,
+                        json_output=args.json
+                    )
+                    checker.process_file()
+                    pbar.update(1)
+        else:
+            # Json mode: no progress bar
             for file_path in files_to_process:
-
-                now = datetime.datetime.now()
-                timestamp = now.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]  # Format the date and time with milliseconds
-                pbar.set_description(f"{timestamp} - INFO - Processing files")
-
                 checker = AudioMediaChecker(
                     str(file_path),
                     check_all_tracks=args.check_all_tracks,
@@ -706,10 +784,10 @@ def main():
                     confidence_threshold=args.confidence,
                     model=args.model,
                     gpu=args.gpu,
-                    logger=logger
+                    logger=logger,
+                    json_output=args.json
                 )
                 checker.process_file()
-                pbar.update(1)  # Update the progress bar after processing the file
 
         logger.info("Script successfully completed.")
         sys.exit(0)
