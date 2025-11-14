@@ -115,7 +115,7 @@ class AudioMediaChecker:
         self.whisper_model_size = model
         self.gpu = gpu
         self.logger = logger if logger else _setup_logger(verbose)
-        self.json_output = json
+        self.json_output = json_output
 
         # Whisper model cache (lazy-loaded on first use)
         self._whisper = None
@@ -649,7 +649,7 @@ def main():
         parser.add_argument('--verbose', action='store_true', 
                             help='Enable detailed logging')
         parser.add_argument('--json', action='store_true', 
-                            help='Output results in JSON format with minimal information (track number and language only)')
+                            help='Output results ONLY in JSON format with minimal information (track number and language only), usefull to use with others script. Better to use in combination with --dry-run and to analyze all with also --check-all-tracks')
         parser.add_argument('--dry-run', action='store_true',
                             help='Simulates operations without modifying the file')
         parser.add_argument('--force-language', nargs='?', const='', 
@@ -743,7 +743,7 @@ def main():
                 'confidence_threshold': args.confidence,
                 'model': args.model,
                 'gpu': args.gpu,
-                'json': args.json
+                'json_output': args.json
             }
             logger.info("Execution parameters:")
             for param, value in params.items():
