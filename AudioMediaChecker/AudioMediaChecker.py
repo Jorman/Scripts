@@ -251,6 +251,8 @@ class AudioMediaChecker:
                 self.log_stream_info(stream)
                 self.logger.info("--" * 30)
 
+                attempt_successful = False
+
                 # First attempt
                 self.logger.info(f"Attempt 1 - Track with ffprobe index {ffprobe_index}")
                 self.logger.info("--" * 30)
@@ -298,6 +300,8 @@ class AudioMediaChecker:
                         f"Language detected: {detected_lang}, Confidence: {confidence_percent:.2f}% >= {self.confidence_threshold}%"
                     )
                     self.handle_detection_result(ffprobe_index, detected_lang, confidence_percent / 100)
+
+                    attempt_successful = True
 
                     # Collect results in json mode
                     if self.json_output:
@@ -375,6 +379,8 @@ class AudioMediaChecker:
                             f"Language detected: {detected_lang}, Confidence: {confidence_percent:.2f}% >= {self.confidence_threshold}%"
                         )
                         self.handle_detection_result(ffprobe_index, detected_lang, confidence_percent / 100)
+
+                        attempt_successful = True
 
                         # Collect results in json mode
                         if self.json_output:
