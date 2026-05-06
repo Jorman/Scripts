@@ -491,6 +491,7 @@ def check_special_cases(emulerr_data):
             if data.get("downloadClientName") == Config.DOWNLOAD_CLIENT:
                 valid_record = record
                 break
+
         # If records exist but none meet the criteria, the download is considered
         # present only on eMulerr (not tracked by Sonarr/Radarr).
         # We still need to `continue` in both cases to avoid using a None
@@ -885,12 +886,12 @@ def main():
                 # Invokes the function that removes the download from the server.
                 emulerr_remove_download(identifier, name, Config.DRY_RUN)
 
-                # Manually remove the hash from the monitoring if necessary
-                if download.hash in stall_checker.warnings:
-                    del stall_checker.warnings[download.hash]
+                # ✓ FIXED (use identifier instead of download.hash):
+                if identifier in stall_checker.warnings:
+                    del stall_checker.warnings[identifier]
 
-                if download.hash in stall_checker.previous_warnings:
-                    stall_checker.previous_warnings.remove(download.hash)
+                if identifier in stall_checker.previous_warnings:
+                    stall_checker.previous_warnings.remove(identifier)
 
                 # Removal from local emulerr_data list:
                 # If the download is an EmulerrDownload, we remove it directly.
