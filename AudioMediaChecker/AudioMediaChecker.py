@@ -3,6 +3,7 @@ import os
 import signal
 import sys
 import subprocess
+import concurrent.futures
 import json
 import random
 import logging
@@ -307,11 +308,10 @@ class AudioMediaChecker:
                 self.logger.info("--" * 30)
 
                 first_attempt_confidences = {}
-                for start_percent in first_attempt_positions:
+                for start_percent, audio_segment in self.extract_samples_pipelined(audio_position, first_attempt_positions, first_attempt_duration):
                     if _SHUTDOWN_REQUESTED or self.interrupted:
                         self.logger.warning("Sampling interrupted by shutdown request.")
                         return False
-                    audio_segment = self.extract_audio_sample(audio_position, start_percent, first_attempt_duration)
                     if audio_segment is None:
                         continue
                     detected_lang, confidence = self.detect_language(audio_segment)
@@ -395,11 +395,10 @@ class AudioMediaChecker:
                     self.logger.info("--" * 30)
 
                     attempt_confidences = {}
-                    for start_percent in attempt_positions:
+                    for start_percent, audio_segment in self.extract_samples_pipelined(audio_position, attempt_positions, attempt_duration):
                         if _SHUTDOWN_REQUESTED or self.interrupted:
                             self.logger.warning("Sampling interrupted by shutdown request.")
                             return False
-                        audio_segment = self.extract_audio_sample(audio_position, start_percent, attempt_duration)
                         if audio_segment is None:
                             continue
                         detected_lang, confidence = self.detect_language(audio_segment)
@@ -653,6 +652,49 @@ class AudioMediaChecker:
             self.logger.info(f"Detected language: {detected_language} with confidence: {info.language_probability:.2f}")
 
         return detected_language, info.language_probability
+
+    def extract_samples_pipelined(self, audio_position, positions, duration_seconds):
+        """
+        Generator that yields (start_percent, audio_segment) tuples, prefetching the next
+        audio sample via FFmpeg in a background thread while the caller performs neural inference
+        on the current sample.
+
+        Arguments:
+          audio_position (int): index of the audio track (for ffmpeg).
+          positions (list): list of start percentages to sample.
+          duration_seconds (float): duration of each sample in seconds.
+
+        Yields:
+          tuple: (start_percent, audio_segment) where audio_segment is io.BytesIO or None.
+        """
+        if not positions:
+            return
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            # Prefetch the first sample
+            future_next = executor.submit(self.extract_audio_sample, audio_position, positions[0], duration_seconds)
+
+            for i, start_percent in enumerate(positions):
+                global _SHUTDOWN_REQUESTED
+                if _SHUTDOWN_REQUESTED or self.interrupted:
+                    break
+
+                try:
+                    audio_segment = future_next.result()
+                except Exception as e:
+                    self.logger.error(f"Error extracting audio sample at {start_percent}%: {e}")
+                    audio_segment = None
+
+                # Prefetch the next sample while the current one is being processed by Whisper
+                if i + 1 < len(positions) and not (_SHUTDOWN_REQUESTED or self.interrupted):
+                    future_next = executor.submit(self.extract_audio_sample, audio_position, positions[i + 1], duration_seconds)
+                else:
+                    future_next = None
+
+                yield start_percent, audio_segment
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     def extract_audio_sample(self, audio_position, start_percent, duration_seconds):
         """
