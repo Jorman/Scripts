@@ -27,7 +27,7 @@ Because the script operates in a production environment and performs direct meta
 | ID | Title | Category | Priority | Status |
 |:---|:---|:---|:---:|:---:|
 | **TASK-01** | Whisper Model Caching Across Multiple Files & Resource Cleanup | Bugfix / Performance | High | ✅ Completed |
-| **TASK-02** | 4-Valid-Sample Sampling Logic + Quorum & Silent/Non-Vocal Handling | Algorithm / Accuracy | High | Planned |
+| **TASK-02** | 4-Valid-Sample Sampling Logic + Quorum & Silent/Non-Vocal Handling | Algorithm / Accuracy | High | ✅ Completed |
 | **TASK-03** | Graceful Shutdown & Interruption Signals Handling (`SIGINT`/`SIGTERM`) | Stability / OS | Medium | ✅ Completed |
 | **TASK-04** | Fast Language Detection vs Full Autoregressive Transcription | Performance | Medium | ✅ Completed |
 | **TASK-05** | Environment Variables Support (Docker-Friendly Configuration) | Feature | Low | Planned |
@@ -79,7 +79,7 @@ This caused:
 ### TASK-02: 4-Valid-Sample Sampling Logic + Quorum & Silent/Non-Vocal Handling
 
 * **Analysis Reference:** Items 1.2 and 2.2
-* **Status:** Planned
+* **Status:** ✅ Completed
 
 #### 1. Problem Description
 The previous weighted average calculation had a fundamental mathematical flaw:
@@ -89,36 +89,36 @@ If 4 samples were taken:
 * Sample 2 (35% of movie): Clear Italian dialogue, confidence 0.98.
 * Sample 3 (60% of movie): Clear Italian dialogue, confidence 0.97.
 * Sample 4 (85% of movie): Clear Italian dialogue, confidence 0.95.
-Italian total confidence is `2.90`. Divided by 4 total samples, the average becomes `72.5%`. If the opening song spanned two samples, the average dropped to `48.7%`, failing the 65% threshold despite dialogue being crystal clear Italian throughout!
+Italian total confidence was `2.90`. Divided by 4 total samples, the average became `72.5%`. If the opening song spanned two samples, the average dropped to `48.7%`, failing the 65% threshold despite dialogue being crystal clear Italian throughout!
 
-Furthermore, on **silent movies** or music-only/effects-only audio tracks, Whisper guesses a random language on background noise, triggering 10 exhaustive retry attempts (30 to 90 seconds each) and wasting minutes with zero speech present.
+Furthermore, on **silent movies** or music-only/effects-only audio tracks, Whisper guessed random languages on background noise, triggering 10 exhaustive retry attempts (30 to 90 seconds each) and wasting minutes with zero speech present.
 
 #### 2. Resolution Strategy
-* **Guarantee of 4 Valid Vocal Samples:**
-  * Track analysis must always collect **4 valid vocal samples** (i.e. segments where Whisper detects actual human speech).
-  * Initial sampling positions (10%, 35%, 60%, 85%) bypass opening and end credits. However, if a sample falls on a dialogue-free scene (`no_speech_prob > 0.65` or silence), that sample is discarded, and the tool dynamically picks a **new percentage point** to sample until 4 valid vocal samples are acquired.
-* **Silent Movies / Non-Vocal Audio Protection:**
-  * To prevent infinite loops on silent movies or music/effects-only tracks, set a maximum exploration ceiling (e.g. max 8–10 distinct percentage points sampled).
-  * If all explored points consistently show no speech (`no_speech_prob` high), the track is classified as *"Non-Vocal / Dialogue-Free Audio"*.
-  * An explicit log is emitted, the 9 retry attempts are skipped immediately, and the track is preserved (or assigned ISO 639-2 `zxx` / `und`).
-* **Quorum Rule Across the 4 Valid Samples:**
-  * Once 4 valid vocal samples are gathered:
-    * The dominant language must be confirmed across the majority of valid samples (at least 3 out of 4, or 50%+1).
-    * The average confidence of the winning language across the samples where it was detected must be `>= --confidence` (default 65%).
-    * Any rogue word in another language or transient noise will not unfairly penalize the true language.
+* **Speech Validation via Silero VAD:**
+  * Integrated Silero VAD (`get_speech_timestamps`) to inspect audio arrays prior to language detection. Samples containing less than 1.5s of confirmed human speech are discarded as non-vocal (music, silence, or noise).
+* **Guaranteed 4 Valid Vocal Samples with Dynamic Prefetching:**
+  * In Attempt 1, start with positions `[10%, 35%, 60%, 85%]`.
+  * In Attempts 2–10, start with 4 random percentages from `[5..95%]` avoiding previously tested positions.
+  * If a sample lacks speech, the pipeline discards it and dynamically queues a new unexplored percentage point between 5% and 95% until 4 valid samples are collected or the exploration ceiling is reached.
+* **Exploration Ceiling & Non-Vocal Audio Protection:**
+  * Set `max_explored = 10` points per attempt.
+  * If all explored points across the entire file consistently lack human speech, the track is classified as *"Non-Vocal / Dialogue-Free Audio"*, immediately halting the remaining 9 attempts.
+* **Purified Quorum Consensus:**
+  * Quorum strictly requires all 4 valid vocal samples and at least 3 out of 4 (>= 75%) agreement on the dominant language.
+  * The average confidence is computed exclusively across samples that matched the dominant language, preventing unrelated soundbites or foreign words from diluting the true language.
 
 #### 3. Step-by-Step Implementation
-1. In `detect_language()`, return `detected_language`, `confidence`, and `info.no_speech_prob`.
-2. In sampling logic:
-   * Maintain `valid_samples = []`.
-   * Start with base points (10%, 35%, 60%, 85%).
-   * If a point has `no_speech_prob > 0.65`, log and generate a new unexplored timestamp.
-   * Enforce search cap (e.g. max 8 points). If cap reached without 4 vocal samples: classify as non-vocal track.
-3. Once 4 valid vocal samples are collected, calculate occurrences and confidence averages, then apply quorum validation.
+1. Integrated Silero VAD (`check_speech_activity`) using `faster_whisper.vad`.
+2. Implemented `collect_valid_samples` generator/prefetcher with dynamic queue replacement.
+3. Implemented `evaluate_quorum` with strict 4-sample quorum and purified confidence calculation.
+4. Refactored `process_file` to unify Attempt 1 and Attempts 2–10 under the new robust engine.
 
 #### 4. Verification Tests & Acceptance Criteria
-* Test on file with music intro: verify silent/music sample is replaced by a valid vocal segment.
-* Test on silent/music-only track: verify tool stops after exploration cap without running 10 full retry attempts.
+* Real file test on TV episode (`Spin City`): 4/4 valid speech samples collected, 100% Italian quorum (94.09% confidence).
+* Multi-track movie (`2 Hearts`): analyzed Track 1 (Italian AC3 5.1) and Track 2 (English AC3 5.1), both achieving 100% quorum in 7.3s.
+* Movie with silent intro (`We Live in Time` - Opus audio): positions 10% and 35% detected as 0s speech and discarded; replacement positions 67% and 61% queued and confirmed with speech, reaching 100% Italian quorum.
+* Atmospheric horror film (`The Woman in Black`): Attempt 1 discarded 7 silent points, stopped at 3 samples; Attempt 2 ran with randomized longer duration and achieved 75% Italian quorum (97.45% confidence); Track 2 achieved 100% English quorum (95.47% confidence).
+* Tested `--json` and `--verbose` modes across all file types.
 
 ---
 

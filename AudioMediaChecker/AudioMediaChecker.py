@@ -8,6 +8,7 @@ import json
 import random
 import logging
 from faster_whisper import WhisperModel, decode_audio
+from faster_whisper.vad import get_speech_timestamps, VadOptions
 import pycountry
 import io
 from pathlib import Path
@@ -302,153 +303,89 @@ class AudioMediaChecker:
                 self.logger.info("--" * 30)
 
                 attempt_successful = False
+                used_positions = set()
 
-                # First attempt
-                self.logger.info(f"Attempt 1 - Track with ffprobe index {ffprobe_index}")
-                self.logger.info("--" * 30)
-
-                first_attempt_confidences = {}
-                for start_percent, audio_segment in self.extract_samples_pipelined(audio_position, first_attempt_positions, first_attempt_duration):
+                for attempt in range(1, 11):
                     if _SHUTDOWN_REQUESTED or self.interrupted:
-                        self.logger.warning("Sampling interrupted by shutdown request.")
+                        self.logger.warning("Attempts interrupted by shutdown request.")
                         return False
-                    if audio_segment is None:
-                        continue
-                    detected_lang, confidence = self.detect_language(audio_segment)
-                        
-                    if detected_lang not in first_attempt_confidences:
-                        first_attempt_confidences[detected_lang] = {'total_confidence': 0, 'count': 0}
-                    first_attempt_confidences[detected_lang]['total_confidence'] += confidence
-                    first_attempt_confidences[detected_lang]['count'] += 1
-
-                    self.logger.info(f"Position {start_percent}%: Language detected '{detected_lang}', Confidence {confidence * 100:.2f}%")
-
-                # Save only if there are detections.
-                if first_attempt_confidences:
-                    total_detections = sum(lang_data['count'] for lang_data in first_attempt_confidences.values())
-                    first_attempt_weighted_averages = {}
-                    for lang, stats in first_attempt_confidences.items():
-                        average_confidence = stats['total_confidence'] / stats['count']
-                        weighted_average = (average_confidence * stats['count']) / total_detections
-                        first_attempt_weighted_averages[lang] = weighted_average * 100
-
-                    self.logger.info("--" * 30)
-                    self.logger.info("Weighted averages of the confidences of each language surveyed:")
-                    for lang, weighted_avg in first_attempt_weighted_averages.items():
-                        self.logger.info(f"-> {lang}: {weighted_avg:.2f}%")
-
-                    detected_lang = max(first_attempt_weighted_averages, key=first_attempt_weighted_averages.get)
-                    confidence_percent = first_attempt_weighted_averages[detected_lang]
-                else:
-                    detected_lang = None
-                    confidence_percent = 0
-
-                self.logger.info("--" * 30)
-                self.logger.info(f"Language with higher weighted average: '{detected_lang}', Weighted average: {confidence_percent:.2f}%")
-
-                if confidence_percent >= self.confidence_threshold:
-                    self.logger.info(
-                        f"Attempt 1 successful for trace with ffprobe index {ffprobe_index}. "
-                        f"Language detected: {detected_lang}, Confidence: {confidence_percent:.2f}% >= {self.confidence_threshold}%"
-                    )
-                    self.handle_detection_result(ffprobe_index, detected_lang, confidence_percent / 100)
-
-                    attempt_successful = True
-
-                    # Collect results in json mode
-                    if self.json_output:
-                        # Converti il codice lingua da ISO 639-1 (2 char) a ISO 639-2 (3 char)
-                        try:
-                            detected_lang_3 = pycountry.languages.get(alpha_2=detected_lang).alpha_3
-                        except (AttributeError, KeyError):
-                            self.logger.warning(f"Language code not found for {detected_lang}. Using the original code.")
-                            detected_lang_3 = detected_lang
-                        
-                        json_results.append({
-                            "track": ffprobe_index,
-                            "language": detected_lang_3
-                        })
-
-                    self.logger.info("--" * 30)
-                    continue
-
-                self.logger.info(f"Attempt 1 failed. Weighted average: {confidence_percent:.2f}% < {self.confidence_threshold}%")
-                self.logger.info("--" * 30)
-
-                # Subsequent attempts
-                used_positions = set(first_attempt_positions)
-                for attempt in range(2, 11):
-                    if _SHUTDOWN_REQUESTED or self.interrupted:
-                        self.logger.warning("Subsequent attempts interrupted by shutdown request.")
-                        return False
-
-                    attempt_duration = random.randint(30, 90)
-                    attempt_positions = []
-                        
-                    while len(attempt_positions) < 4:
-                        new_position = random.randint(5, 95)
-                        if new_position not in used_positions:
-                            attempt_positions.append(new_position)
-                            used_positions.add(new_position)
 
                     self.logger.info(f"Attempt {attempt} - Track with ffprobe index {ffprobe_index}")
                     self.logger.info("--" * 30)
 
-                    attempt_confidences = {}
-                    for start_percent, audio_segment in self.extract_samples_pipelined(audio_position, attempt_positions, attempt_duration):
-                        if _SHUTDOWN_REQUESTED or self.interrupted:
-                            self.logger.warning("Sampling interrupted by shutdown request.")
-                            return False
-                        if audio_segment is None:
-                            continue
-                        detected_lang, confidence = self.detect_language(audio_segment)
-                            
-                        if detected_lang not in attempt_confidences:
-                            attempt_confidences[detected_lang] = {'total_confidence': 0, 'count': 0}
-                        attempt_confidences[detected_lang]['total_confidence'] += confidence
-                        attempt_confidences[detected_lang]['count'] += 1
-
-                        self.logger.info(f"Position {start_percent}%: Language detected '{detected_lang}', Confidence {confidence * 100:.2f}%")
-
-                    if attempt_confidences:
-                        total_detections = sum(lang_data['count'] for lang_data in attempt_confidences.values())
-                        attempt_weighted_averages = {}
-                        for lang, stats in attempt_confidences.items():
-                            average_confidence = stats['total_confidence'] / stats['count']
-                            weighted_average = (average_confidence * stats['count']) / total_detections
-                            attempt_weighted_averages[lang] = weighted_average * 100
-
-                        self.logger.info("--" * 30)
-                        self.logger.info("Weighted averages of the confidences of each language surveyed:")
-                        for lang, weighted_avg in attempt_weighted_averages.items():
-                            self.logger.info(f"-> {lang}: {weighted_avg:.2f}%")
-
-                        detected_lang = max(attempt_weighted_averages, key=attempt_weighted_averages.get)
-                        confidence_percent = attempt_weighted_averages[detected_lang]
+                    if attempt == 1:
+                        attempt_duration = 30
+                        initial_positions = [10, 35, 60, 85]
                     else:
-                        detected_lang = None
-                        confidence_percent = 0
+                        attempt_duration = random.randint(30, 90)
+                        initial_positions = []
+                        pick_attempts = 0
+                        while len(initial_positions) < 4 and pick_attempts < 100:
+                            new_pos = random.randint(5, 95)
+                            if new_pos not in used_positions:
+                                initial_positions.append(new_pos)
+                                used_positions.add(new_pos)
+                            pick_attempts += 1
+                        if len(initial_positions) < 4:
+                            while len(initial_positions) < 4:
+                                initial_positions.append(random.randint(5, 95))
 
-                    self.logger.info(f"Language with higher weighted average: '{detected_lang}', Weighted average: {confidence_percent:.2f}%")
+                    valid_samples, is_non_vocal, used_positions = self.collect_valid_samples(
+                        audio_position,
+                        initial_positions,
+                        attempt_duration,
+                        target_valid=4,
+                        max_explored=10,
+                        used_positions=used_positions
+                    )
 
-                    if confidence_percent >= self.confidence_threshold:
-                        self.logger.info(
-                            f"Attempt {attempt} successful for trace with ffprobe index {ffprobe_index}. "
-                            f"Language detected: {detected_lang}, Confidence: {confidence_percent:.2f}% >= {self.confidence_threshold}%"
+                    if _SHUTDOWN_REQUESTED or self.interrupted:
+                        self.logger.warning("Sampling interrupted by shutdown request.")
+                        return False
+
+                    if is_non_vocal:
+                        self.logger.warning(
+                            f"Track with ffprobe index {ffprobe_index}: No human speech detected across {len(used_positions)} "
+                            f"sampled positions. Track classified as dialogue-free / non-vocal audio."
                         )
-                        self.handle_detection_result(ffprobe_index, detected_lang, confidence_percent / 100)
+                        break
 
+                    if not valid_samples:
+                        self.logger.info(f"Attempt {attempt} failed: No valid vocal samples collected.")
+                        self.logger.info("--" * 30)
+                        continue
+
+                    dominant_lang, avg_confidence, quorum_met, dominant_count = self.evaluate_quorum(valid_samples, target_valid=4)
+                    confidence_percent = avg_confidence * 100
+
+                    self.logger.info("--" * 30)
+                    self.logger.info(f"Valid vocal samples: {len(valid_samples)}/4")
+                    for s in valid_samples:
+                        self.logger.info(f"  -> Position {s['position']}%, Language '{s['language']}', Confidence {s['confidence'] * 100:.2f}%")
+
+                    self.logger.info("--" * 30)
+                    self.logger.info(
+                        f"Quorum analysis: Dominant language '{dominant_lang}' with {dominant_count}/{len(valid_samples)} samples "
+                        f"({dominant_count / len(valid_samples) * 100:.0f}%). "
+                        f"Purified average confidence: {confidence_percent:.2f}%"
+                    )
+
+                    if quorum_met and confidence_percent >= self.confidence_threshold:
+                        self.logger.info(
+                            f"Attempt {attempt} successful for track with ffprobe index {ffprobe_index}. "
+                            f"Language detected: {dominant_lang}, Confidence: {confidence_percent:.2f}% >= {self.confidence_threshold}%"
+                        )
+                        self.handle_detection_result(ffprobe_index, dominant_lang, avg_confidence)
                         attempt_successful = True
 
                         # Collect results in json mode
                         if self.json_output:
-                            # Converti il codice lingua da ISO 639-1 (2 char) a ISO 639-2 (3 char)
                             try:
-                                detected_lang_3 = pycountry.languages.get(alpha_2=detected_lang).alpha_3
+                                detected_lang_3 = pycountry.languages.get(alpha_2=dominant_lang).alpha_3
                             except (AttributeError, KeyError):
-                                self.logger.warning(f"Language code not found for {detected_lang}. Using the original code.")
-                                detected_lang_3 = detected_lang
-                            
+                                self.logger.warning(f"Language code not found for {dominant_lang}. Using the original code.")
+                                detected_lang_3 = dominant_lang
+
                             json_results.append({
                                 "track": ffprobe_index,
                                 "language": detected_lang_3
@@ -457,7 +394,8 @@ class AudioMediaChecker:
                         self.logger.info("--" * 30)
                         break
 
-                    self.logger.info(f"Attempt {attempt} failed. Weighted average: {confidence_percent:.2f}% < {self.confidence_threshold}%")
+                    fail_reason = "Quorum not met (lack of consensus)" if not quorum_met else f"Confidence {confidence_percent:.2f}% < {self.confidence_threshold}%"
+                    self.logger.info(f"Attempt {attempt} failed: {fail_reason}.")
                     self.logger.info("--" * 30)
 
                 # If no attempt was successful, add "und"
@@ -629,7 +567,7 @@ class AudioMediaChecker:
             else:
                 self.logger.info(f"[DRY RUN] File {self.file_path.name} is not MKV format - would not be modified in normal mode")
 
-    def detect_language(self, audio_file):
+    def detect_language(self, audio_file, audio_np=None):
         """
         Performs language detection using the (cached) Whisper model.
         When verbose mode is active, performs full autoregressive transcription to display
@@ -637,6 +575,7 @@ class AudioMediaChecker:
 
         Arguments:
           audio_file (file-like): audio sample in BytesIO format.
+          audio_np (numpy.ndarray, optional): pre-decoded 16kHz float32 audio array.
 
         Returns:
           tuple: (language detected (str), confidence (float))
@@ -658,9 +597,178 @@ class AudioMediaChecker:
 
             return detected_language, confidence
         else:
-            audio_np = decode_audio(audio_file, sampling_rate=model.feature_extractor.sampling_rate)
+            if audio_np is None:
+                audio_np = decode_audio(audio_file, sampling_rate=model.feature_extractor.sampling_rate)
             detected_language, confidence, _ = model.detect_language(audio_np)
             return detected_language, confidence
+
+    def check_speech_activity(self, audio_np, min_speech_seconds=1.5):
+        """
+        Checks if the audio sample contains confirmed human speech using Silero VAD.
+
+        Arguments:
+          audio_np (numpy.ndarray): 16kHz audio array.
+          min_speech_seconds (float): minimum cumulative speech duration in seconds.
+
+        Returns:
+          tuple: (has_speech: bool, total_speech_seconds: float)
+        """
+        try:
+            opts = VadOptions()
+            speech_timestamps = get_speech_timestamps(audio_np, opts)
+            if not speech_timestamps:
+                return False, 0.0
+            total_speech_sec = sum(t['end'] - t['start'] for t in speech_timestamps) / 16000.0
+            return total_speech_sec >= min_speech_seconds, total_speech_sec
+        except Exception as e:
+            self.logger.warning(f"VAD speech activity check error: {e}. Defaulting to speech present.")
+            return True, 0.0
+
+    def evaluate_quorum(self, valid_samples, target_valid=4):
+        """
+        Evaluates quorum consensus across valid samples.
+        Requires strictly target_valid samples (default 4) and at least 3 out of 4 (>= 75%) consensus.
+        Calculates the purified average confidence strictly for the dominant language.
+
+        Arguments:
+          valid_samples (list): list of dicts with 'language' and 'confidence'.
+          target_valid (int): target valid sample count (default 4).
+
+        Returns:
+          tuple: (dominant_lang: str, avg_confidence: float, quorum_met: bool, dominant_count: int)
+        """
+        if not valid_samples or len(valid_samples) < target_valid:
+            if valid_samples:
+                dominant_lang = max([s['language'] for s in valid_samples], key=[s['language'] for s in valid_samples].count)
+                dominant_count = [s['language'] for s in valid_samples].count(dominant_lang)
+                dominant_confidences = [s['confidence'] for s in valid_samples if s['language'] == dominant_lang]
+                avg_confidence = sum(dominant_confidences) / len(dominant_confidences)
+                return dominant_lang, avg_confidence, False, dominant_count
+            return None, 0.0, False, 0
+
+        lang_counts = {}
+        for s in valid_samples:
+            lang = s['language']
+            lang_counts[lang] = lang_counts.get(lang, 0) + 1
+
+        dominant_lang = max(lang_counts, key=lang_counts.get)
+        dominant_count = lang_counts[dominant_lang]
+
+        dominant_confidences = [s['confidence'] for s in valid_samples if s['language'] == dominant_lang]
+        avg_confidence = sum(dominant_confidences) / len(dominant_confidences)
+
+        # Quorum: requires at least 3 out of 4 (>= 75%)
+        quorum_met = dominant_count >= 3
+
+        return dominant_lang, avg_confidence, quorum_met, dominant_count
+
+    def collect_valid_samples(self, audio_position, initial_positions, duration_seconds, target_valid=4, max_explored=10, used_positions=None):
+        """
+        Collects exactly target_valid samples with confirmed human speech.
+        Uses background prefetching for FFmpeg extraction while performing VAD and Whisper inference.
+        If a sample contains no speech (silence/music), discards it and dynamically queues a new position
+        until target_valid samples are found or max_explored is reached.
+
+        Arguments:
+          audio_position (int): index of the audio track for ffmpeg.
+          initial_positions (list): starting positions to sample.
+          duration_seconds (float): duration in seconds for each sample.
+          target_valid (int): number of valid vocal samples required (default 4).
+          max_explored (int): maximum number of distinct positions to sample before stopping (default 8).
+          used_positions (set): set of already explored percentage positions for this track.
+
+        Returns:
+          tuple: (valid_samples: list, is_non_vocal: bool, used_positions: set)
+        """
+        if used_positions is None:
+            used_positions = set()
+
+        for pos in initial_positions:
+            used_positions.add(pos)
+
+        position_queue = list(initial_positions)
+        valid_samples = []
+        explored_count = 0
+
+        model = self._lazy_load_whisper()
+        sampling_rate = model.feature_extractor.sampling_rate
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            future_next = None
+            current_pos = None
+            if position_queue:
+                current_pos = position_queue.pop(0)
+                future_next = executor.submit(self.extract_audio_sample, audio_position, current_pos, duration_seconds)
+
+            while future_next is not None and len(valid_samples) < target_valid:
+                global _SHUTDOWN_REQUESTED
+                if _SHUTDOWN_REQUESTED or self.interrupted:
+                    self.logger.warning("Sampling interrupted by shutdown request.")
+                    break
+
+                try:
+                    audio_segment = future_next.result()
+                except Exception as e:
+                    self.logger.error(f"Error extracting audio sample at {current_pos}%: {e}")
+                    audio_segment = None
+
+                start_percent = current_pos
+                explored_count += 1
+
+                # Decode audio and check speech activity
+                audio_np = None
+                has_speech = False
+                speech_sec = 0.0
+
+                if audio_segment is not None:
+                    try:
+                        audio_segment.seek(0)
+                        audio_np = decode_audio(audio_segment, sampling_rate=sampling_rate)
+                        has_speech, speech_sec = self.check_speech_activity(audio_np)
+                    except Exception as e:
+                        self.logger.warning(f"Error checking speech activity at {start_percent}%: {e}")
+                        has_speech = True
+
+                if has_speech and audio_segment is not None:
+                    detected_lang, confidence = self.detect_language(audio_segment, audio_np=audio_np)
+                    valid_samples.append({
+                        'position': start_percent,
+                        'language': detected_lang,
+                        'confidence': confidence
+                    })
+                    self.logger.info(
+                        f"Position {start_percent}%: Speech confirmed ({speech_sec:.2f}s). "
+                        f"Language detected '{detected_lang}', Confidence {confidence * 100:.2f}% "
+                        f"(Valid sample {len(valid_samples)}/{target_valid})"
+                    )
+                else:
+                    self.logger.info(
+                        f"Position {start_percent}%: No speech detected ({speech_sec:.2f}s speech in sample). Discarding sample."
+                    )
+                    # If we need more samples and can explore more, queue a new random position
+                    if (len(valid_samples) + len(position_queue) < target_valid) and (explored_count + len(position_queue) < max_explored):
+                        new_pos = random.randint(5, 95)
+                        attempts_pick = 0
+                        while new_pos in used_positions and attempts_pick < 50:
+                            new_pos = random.randint(5, 95)
+                            attempts_pick += 1
+                        used_positions.add(new_pos)
+                        position_queue.append(new_pos)
+                        self.logger.info(f"Queued replacement position {new_pos}% to reach {target_valid} valid samples.")
+
+                # If more valid samples needed and queue has items, prefetch next
+                if len(valid_samples) < target_valid and position_queue and not (_SHUTDOWN_REQUESTED or self.interrupted):
+                    current_pos = position_queue.pop(0)
+                    future_next = executor.submit(self.extract_audio_sample, audio_position, current_pos, duration_seconds)
+                else:
+                    future_next = None
+
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        is_non_vocal = (len(valid_samples) == 0 and explored_count >= max_explored)
+        return valid_samples, is_non_vocal, used_positions
 
     def extract_samples_pipelined(self, audio_position, positions, duration_seconds):
         """
