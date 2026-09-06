@@ -85,10 +85,31 @@ def find_files(folder_path: Path, max_depth: int, current_level: int = 0, dry_ru
                 files.extend(find_files(subdir, max_depth, current_level + 1, dry_run))
     
     return files
+ 
+def unload_whisper_model(whisper_model, logger=None):
+    """
+    Explicitly frees Whisper model resources from memory and triggers garbage collection.
+    """
+    if whisper_model is None:
+        return
+    try:
+        if logger:
+            logger.info("Unloading Whisper model and releasing resources...")
+        if hasattr(whisper_model, 'model'):
+            del whisper_model.model
+        del whisper_model
+        import gc
+        gc.collect()
+        if logger:
+            logger.info("Whisper model successfully unloaded.")
+    except Exception as e:
+        if logger:
+            logger.warning(f"Warning during Whisper model unload: {e}")
 
 class AudioMediaChecker:
     def __init__(self, file_path, check_all_tracks=False, verbose=False, dry_run=False, 
-                 force_language=None, confidence_threshold=65, model='base', gpu=False, logger=None, json_output=False):
+                 force_language=None, confidence_threshold=65, model='base', gpu=False, 
+                 logger=None, json_output=False, whisper_model=None):
         """
         Initialize the media file controller.
 
@@ -102,6 +123,8 @@ class AudioMediaChecker:
           model (str): whisper model to be used.
           gpu (bool): if True, use GPU.
           logger (logging.Logger): logger to use.
+          json_output (bool): if True, suppress standard logs and output JSON.
+          whisper_model: pre-loaded WhisperModel instance to reuse across files.
         """
         self.verbose = verbose
         self.file_path = Path(file_path)
@@ -115,8 +138,8 @@ class AudioMediaChecker:
         self.logger = logger if logger else _setup_logger(verbose)
         self.json_output = json_output
 
-        # Whisper model cache (lazy-loaded on first use)
-        self._whisper = None
+        # Whisper model cache (uses preloaded instance or lazy-loads on first use)
+        self._whisper = whisper_model
 
         # In dry-run mode I accept all video formats, otherwise only mkv
         if not self.dry_run and self.file_path.suffix.lower() != '.mkv':
@@ -126,7 +149,8 @@ class AudioMediaChecker:
         self.media_info = self.get_media_info()
         self.total_duration = float(self.media_info['format']['duration'])
 
-        self._validate_model_ram()
+        if self._whisper is None:
+            self._validate_model_ram()
 
     def _lazy_load_whisper(self):
         """
@@ -150,6 +174,12 @@ class AudioMediaChecker:
             )
 
             self.logger.info("Whisper model loaded.")
+        return self._whisper
+
+    def get_whisper_model(self):
+        """
+        Returns the loaded Whisper model instance if available, otherwise None.
+        """
         return self._whisper
 
     def _validate_model_ram(self):
@@ -760,14 +790,36 @@ def main():
                 logger.info(f"  {param}: {value}")
             logger.info("--" * 30)
 
-        # Progress bar visible only if NOT in json mode
-        if not args.json:
-            with tqdm(total=len(files_to_process), desc=" - INFO - Processing files", unit="file", initial=1, leave=False) as pbar:
-                for file_path in files_to_process:
-                    now = datetime.datetime.now()
-                    timestamp = now.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
-                    pbar.set_description(f"{timestamp} - INFO - Processing files")
+        shared_whisper_model = None
+        try:
+            # Progress bar visible only if NOT in json mode
+            if not args.json:
+                with tqdm(total=len(files_to_process), desc=" - INFO - Processing files", unit="file", initial=1, leave=False) as pbar:
+                    for file_path in files_to_process:
+                        now = datetime.datetime.now()
+                        timestamp = now.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
+                        pbar.set_description(f"{timestamp} - INFO - Processing files")
 
+                        checker = AudioMediaChecker(
+                            str(file_path),
+                            check_all_tracks=args.check_all_tracks,
+                            verbose=args.verbose,
+                            dry_run=args.dry_run,
+                            force_language=args.force_language,
+                            confidence_threshold=args.confidence,
+                            model=args.model,
+                            gpu=args.gpu,
+                            logger=logger,
+                            json_output=args.json,
+                            whisper_model=shared_whisper_model
+                        )
+                        checker.process_file()
+                        if shared_whisper_model is None:
+                            shared_whisper_model = checker.get_whisper_model()
+                        pbar.update(1)
+            else:
+                # Json mode: no progress bar
+                for file_path in files_to_process:
                     checker = AudioMediaChecker(
                         str(file_path),
                         check_all_tracks=args.check_all_tracks,
@@ -778,26 +830,15 @@ def main():
                         model=args.model,
                         gpu=args.gpu,
                         logger=logger,
-                        json_output=args.json
+                        json_output=args.json,
+                        whisper_model=shared_whisper_model
                     )
                     checker.process_file()
-                    pbar.update(1)
-        else:
-            # Json mode: no progress bar
-            for file_path in files_to_process:
-                checker = AudioMediaChecker(
-                    str(file_path),
-                    check_all_tracks=args.check_all_tracks,
-                    verbose=args.verbose,
-                    dry_run=args.dry_run,
-                    force_language=args.force_language,
-                    confidence_threshold=args.confidence,
-                    model=args.model,
-                    gpu=args.gpu,
-                    logger=logger,
-                    json_output=args.json
-                )
-                checker.process_file()
+                    if shared_whisper_model is None:
+                        shared_whisper_model = checker.get_whisper_model()
+        finally:
+            if shared_whisper_model is not None:
+                unload_whisper_model(shared_whisper_model, logger if not args.json else None)
 
         logger.info("Script successfully completed.")
         sys.exit(0)
