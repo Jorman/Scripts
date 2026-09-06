@@ -1,5 +1,6 @@
 import argparse
 import os
+import signal
 import sys
 import subprocess
 import json
@@ -12,6 +13,24 @@ from pathlib import Path
 import psutil
 from tqdm import tqdm
 import datetime
+
+# Global interruption flags
+_SHUTDOWN_REQUESTED = False
+_SHUTDOWN_SIGNAL = None
+
+def _signal_handler(signum, frame):
+    """
+    Handles termination signals (SIGINT, SIGTERM) to allow graceful shutdown.
+    """
+    global _SHUTDOWN_REQUESTED, _SHUTDOWN_SIGNAL
+    if not _SHUTDOWN_REQUESTED:
+        _SHUTDOWN_REQUESTED = True
+        _SHUTDOWN_SIGNAL = signum
+        sig_name = "SIGINT (Ctrl+C)" if signum == signal.SIGINT else "SIGTERM" if signum == signal.SIGTERM else f"signal {signum}"
+        print(f"\n[INTERRUPT] Received {sig_name}. Completing current step and exiting cleanly...", file=sys.stderr)
+    else:
+        print("\n[INTERRUPT] Forced exit requested. Terminating immediately...", file=sys.stderr)
+        sys.exit(128 + signum)
 
 def _setup_logger(verbose=False, json=False):
     """
@@ -229,7 +248,8 @@ class AudioMediaChecker:
         """
         Main process for analyzing and possibly updating audio track tags.
         """
-        if self.interrupted:
+        global _SHUTDOWN_REQUESTED
+        if _SHUTDOWN_REQUESTED or self.interrupted:
             return False
 
         # Initialize the list to collect the results (only in json mode)
@@ -267,7 +287,8 @@ class AudioMediaChecker:
             first_attempt_duration = 30
 
             for track in tracks_to_analyze:
-                if self.interrupted:
+                if _SHUTDOWN_REQUESTED or self.interrupted:
+                    self.logger.warning("Processing interrupted by shutdown request.")
                     return False
 
                 stream = track['stream']
@@ -287,6 +308,9 @@ class AudioMediaChecker:
 
                 first_attempt_confidences = {}
                 for start_percent in first_attempt_positions:
+                    if _SHUTDOWN_REQUESTED or self.interrupted:
+                        self.logger.warning("Sampling interrupted by shutdown request.")
+                        return False
                     audio_segment = self.extract_audio_sample(audio_position, start_percent, first_attempt_duration)
                     if audio_segment is None:
                         continue
@@ -354,6 +378,10 @@ class AudioMediaChecker:
                 # Subsequent attempts
                 used_positions = set(first_attempt_positions)
                 for attempt in range(2, 11):
+                    if _SHUTDOWN_REQUESTED or self.interrupted:
+                        self.logger.warning("Subsequent attempts interrupted by shutdown request.")
+                        return False
+
                     attempt_duration = random.randint(30, 90)
                     attempt_positions = []
                         
@@ -368,6 +396,9 @@ class AudioMediaChecker:
 
                     attempt_confidences = {}
                     for start_percent in attempt_positions:
+                        if _SHUTDOWN_REQUESTED or self.interrupted:
+                            self.logger.warning("Sampling interrupted by shutdown request.")
+                            return False
                         audio_segment = self.extract_audio_sample(audio_position, start_percent, attempt_duration)
                         if audio_segment is None:
                             continue
@@ -790,12 +821,20 @@ def main():
                 logger.info(f"  {param}: {value}")
             logger.info("--" * 30)
 
+        # Register signal handlers for graceful shutdown (SIGINT, SIGTERM)
+        signal.signal(signal.SIGINT, _signal_handler)
+        signal.signal(signal.SIGTERM, _signal_handler)
+
         shared_whisper_model = None
         try:
             # Progress bar visible only if NOT in json mode
             if not args.json:
                 with tqdm(total=len(files_to_process), desc=" - INFO - Processing files", unit="file", initial=1, leave=False) as pbar:
                     for file_path in files_to_process:
+                        if _SHUTDOWN_REQUESTED:
+                            logger.warning("Halting remaining file processing due to shutdown request.")
+                            break
+
                         now = datetime.datetime.now()
                         timestamp = now.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
                         pbar.set_description(f"{timestamp} - INFO - Processing files")
@@ -820,6 +859,9 @@ def main():
             else:
                 # Json mode: no progress bar
                 for file_path in files_to_process:
+                    if _SHUTDOWN_REQUESTED:
+                        break
+
                     checker = AudioMediaChecker(
                         str(file_path),
                         check_all_tracks=args.check_all_tracks,
@@ -840,12 +882,18 @@ def main():
             if shared_whisper_model is not None:
                 unload_whisper_model(shared_whisper_model, logger if not args.json else None)
 
+        if _SHUTDOWN_REQUESTED:
+            exit_code = 128 + (_SHUTDOWN_SIGNAL if _SHUTDOWN_SIGNAL else signal.SIGINT)
+            if not args.json:
+                logger.warning(f"Process terminated by interrupt signal (exit code {exit_code}).")
+            sys.exit(exit_code)
+
         logger.info("Script successfully completed.")
         sys.exit(0)
 
     except KeyboardInterrupt:
-        print("\nOperation aborted by user.")
-        sys.exit(1)
+        print("\nOperation aborted by user.", file=sys.stderr)
+        sys.exit(130)
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
         sys.exit(1)

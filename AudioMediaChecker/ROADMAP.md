@@ -1,260 +1,245 @@
-# ROADMAP & PIANO DI IMPLEMENTAZIONE AUDIO MEDIA CHECKER
+# AUDIO MEDIA CHECKER — ROADMAP & IMPLEMENTATION PLAN
 
-Documento di tracciamento e guida operativa per lo sviluppo, l'ottimizzazione e il refactoring di `AudioMediaChecker.py`.
-
----
-
-## 🛡️ PROTOCOLLO OPERATIVO E REGOLE FERREE (AMBIENTE DI PRODUZIONE)
-
-Poiché lo script opera in ambiente di produzione ed effettua modifiche dirette sui metadati dei file multimediali, ogni ciclo di modifica deve attenersi tassativamente alle seguenti regole:
-
-1. **Integrità Assoluta dei File Multimediali di Test:**
-   * I file multimediali reali forniti per i test **NON DEVONO MAI ESSERE MODIFICATI O SOVRASCRITTI**.
-   * Qualsiasi test funzionale deve essere condotto:
-     * In modalità `--dry-run` (simulazione sicura), oppure
-     * Creando una copia temporanea di backup/sandbox in directory isolata (es. scratch/tmp), su cui eseguire il test di scrittura, verificando il risultato ed eliminando la copia al termine.
-2. **Test Obbligatorio su File Reali a Ogni Step:**
-   * Nessuna modifica viene considerata conclusa senza aver prima richiesto file reali di test all'utente e aver convalidato l'output.
-3. **Nessun Commit senza Esito Positivo al 100%:**
-   * Nessun commit o push su Git verrà effettuato finché i test non confermano la totale assenza di regressioni e il corretto funzionamento della specifica modifica.
-4. **Sviluppo Modulare e Incrementale:**
-   * Si affronta un singolo task alla volta. Non si accorpano più modifiche complesse nello stesso ciclo.
+Tracking document and operational guide for the development, optimization, and refactoring of `AudioMediaChecker.py`.
 
 ---
 
-## 📋 INDICE DEI TASK E STATO DI AVANZAMENTO
+## 🛡️ OPERATIONAL PROTOCOL & STRICT RULES (PRODUCTION ENVIRONMENT)
 
-| ID | Titolo | Categoria | Priorità | Stato |
+Because the script operates in a production environment and performs direct metadata modifications on multimedia files, every development cycle must strictly comply with the following rules:
+
+1. **Absolute Integrity of Real Test Media Files:**
+   * Real media files provided for testing **MUST NEVER BE MODIFIED OR OVERWRITTEN**.
+   * Any functional test must be conducted:
+     * In `--dry-run` mode (safe read-only simulation), OR
+     * By creating an isolated temporary sandbox/backup copy in a temporary directory (e.g. scratch/tmp), testing write operations on the copy, verifying the result, and removing the copy upon completion.
+2. **Mandatory Testing on Real Files at Each Step:**
+   * No modification is considered complete without first requesting real test files from the user and validating the output.
+3. **No Commits Without 100% Positive Test Results:**
+   * No Git commit or push will be executed until tests confirm zero regressions and the full, expected behavior of the specific change.
+4. **Modular & Incremental Development:**
+   * Tackle one single task at a time. Never bundle multiple complex changes in the same cycle.
+
+---
+
+## 📋 TASK INDEX & PROGRESS STATUS
+
+| ID | Title | Category | Priority | Status |
 |:---|:---|:---|:---:|:---:|
-| **TASK-01** | Caching Modello Whisper tra File Multipli e Cleanup Risorse | Bugfix / Performance | Alta | ✅ Completato |
-| **TASK-02** | Riformulazione Campionamento (4 Campioni Vocali Validi + Quorum) e Gestione Muti | Algoritmo / Precisione | Alta | Pianificato |
-| **TASK-03** | Gestione Segnali di Interruzione Pulita (Graceful Shutdown) | Stabilità / OS | Media | Pianificato |
-| **TASK-04** | Ottimizzazione Rilevamento Lingua vs Trascrizione Completa | Performance | Media | Pianificato |
-| **TASK-05** | Supporto Variabili d'Ambiente (Docker-Friendly Configuration) | Feature | Bassa | Pianificato |
-| **TASK-06** | Pipeline Parallela Estrazione FFmpeg / Inferenza Whisper | Performance / Concorrenza | Media | Pianificato |
-| **BACKLOG-01**| Supporto `--json` per Cartelle Multiple | Feature / Architettura | - | In Sospeso |
-| **BACKLOG-02**| Studio Disallineamento Indici `ffprobe` vs `mkvpropedit` | Analisi Edge Case | - | In Sospeso |
-| **BACKLOG-04**| Sistema di Notifiche Webhook Post-Elaborazione | Feature | - | In Sospeso |
+| **TASK-01** | Whisper Model Caching Across Multiple Files & Resource Cleanup | Bugfix / Performance | High | ✅ Completed |
+| **TASK-02** | 4-Valid-Sample Sampling Logic + Quorum & Silent/Non-Vocal Handling | Algorithm / Accuracy | High | Planned |
+| **TASK-03** | Graceful Shutdown & Interruption Signals Handling (`SIGINT`/`SIGTERM`) | Stability / OS | Medium | ✅ Completed |
+| **TASK-04** | Fast Language Detection vs Full Autoregressive Transcription | Performance | Medium | Planned |
+| **TASK-05** | Environment Variables Support (Docker-Friendly Configuration) | Feature | Low | Planned |
+| **TASK-06** | Parallel Pipeline: FFmpeg Extraction & Whisper Inference | Performance / Concurrency | Medium | Planned |
+| **BACKLOG-01**| `--json` Support for Multiple Folders/Files | Feature / Architecture | - | On Hold |
+| **BACKLOG-02**| Investigation of `ffprobe` vs `mkvpropedit` Track Index Alignment | Edge Case Analysis | - | On Hold |
+| **BACKLOG-04**| Post-Processing Webhook Notifications System | Feature | - | On Hold |
 
 ---
 
-## DETTAGLIO DEI TASK DI SVILUPPO
+## DEVELOPMENT TASK DETAILS
 
 ---
 
-### TASK-01: Caching Modello Whisper tra File Multipli e Cleanup Risorse
+### TASK-01: Whisper Model Caching Across Multiple Files & Resource Cleanup
 
-* **Riferimento analisi:** Punto 1.1
-* **Stato:** ✅ Completato
+* **Analysis Reference:** Item 1.1
+* **Status:** ✅ Completed
 
-#### 1. Descrizione del Problema
-Nel ciclo `main()`, per ciascun file individuato nella cartella viene istanziata una nuova classe `AudioMediaChecker`. Sebbene la classe disponga internamente di un meccanismo lazy per inizializzare Whisper (`self._whisper`), tale istanza viene distrutta al termine di ogni file.
-Se l'utente esegue lo script su una cartella con decine o centinaia di file, il modello Whisper (da centinaia di megabyte a svariati gigabyte di pesi) viene allocato, caricato da disco e deallocato **da zero per ogni singolo file**.
-Questo causa:
-* Spreco enorme di tempo (da 5 a 30 secondi di overhead per file).
-* Continuo riempimento e svuotamento di RAM e VRAM GPU.
-* Rischio di frammentazione della memoria GPU su lunghe sessioni.
-* Nessuno scaricamento esplicito (cleanup) della memoria prima della chiusura dello script.
+#### 1. Problem Description
+In the `main()` loop, a new `AudioMediaChecker` instance was previously created for each file found in the folder. Although the class featured a lazy initialization mechanism (`self._whisper`), that instance was destroyed at the end of each file.
+When processing a folder containing dozens or hundreds of files, the Whisper model (ranging from hundreds of megabytes to several gigabytes) was allocated, loaded from disk, and deallocated **from scratch for every single file**.
+This caused:
+* Massive time loss (5 to 30 seconds overhead per file).
+* Continuous filling and clearing of RAM and GPU VRAM.
+* Risk of GPU memory fragmentation during long sessions.
+* Lack of explicit memory cleanup prior to script exit.
 
-#### 2. Come Risolvere il Problema
-* **Condivisione dell'istanza del modello:** Il modello Whisper deve essere istanziato una sola volta (al primo file che richiede effettivamente un'analisi) e riutilizzato per tutti i file successivi della sessione.
-* **Separazione delle responsabilità:** `AudioMediaChecker` deve poter ricevere un'istanza già esistente del modello Whisper oppure demandare la gestione del modello a un gestore di sessione / singleton.
-* **Cleanup Esplicito all'Uscita:** Prima dell'uscita del programma (sia naturale che per interruzione o eccezione), rilasciare esplicitamente l'oggetto `WhisperModel`, invocare la garbage collection di Python (`gc.collect()`) e, in caso di GPU, svuotare la cache VRAM (`torch.cuda.empty_cache()` se disponibile).
+#### 2. Resolution Strategy
+* **Shared Model Instance:** The Whisper model is instantiated once (on the first file requiring speech detection) and reused across all subsequent files in the session.
+* **Separation of Concerns:** `AudioMediaChecker` accepts an optional pre-loaded `whisper_model` instance or falls back to lazy-loading if none is supplied.
+* **Explicit Exit Cleanup:** Before script termination (whether normal, interrupted, or on error), explicitly release the `WhisperModel` instance, run Python garbage collection (`gc.collect()`), and clear CUDA VRAM cache if GPU is enabled.
 
-#### 3. Step Operativi per la Risoluzione
-1. Modificare il costruttore di `AudioMediaChecker` per accettare un parametro opzionale `whisper_model=None`.
-2. Se il modello viene passato dall'esterno, riutilizzarlo direttamente senza richiamare `_lazy_load_whisper`.
-3. Nel `main()`, gestire il riferimento al modello a livello di ciclo globale sui file:
-   * Al primo file analizzato che necessita di rilevamento vocale, istanziare il modello e salvarne il riferimento.
-   * Passare il modello condiviso a tutti i file successivi.
-4. Creare una funzione di cleanup esplicita `unload_whisper_model(model)`:
-   * Cancellazione del riferimento (`del model`).
-   * Esecuzione di `gc.collect()`.
-   * Rilascio della memoria CUDA se attivo `--gpu`.
-5. Integrare la chiamata di cleanup nel blocco `finally` del `main()`.
+#### 3. Step-by-Step Implementation
+1. Modify `AudioMediaChecker.__init__` to accept `whisper_model=None`.
+2. Reuse the supplied model instance directly without re-invoking `_lazy_load_whisper`.
+3. In `main()`, manage `shared_whisper_model`:
+   * On the first file requiring speech detection, capture the lazy-loaded model via `checker.get_whisper_model()`.
+   * Pass `shared_whisper_model` to all subsequent file checks.
+4. Implement `unload_whisper_model(whisper_model, logger=None)` to delete model tensors, trigger `gc.collect()`, and log status.
+5. Wrap file processing in a `try...finally:` block to guarantee cleanup.
 
-#### 4. Test di Analisi e Criteri di Verifica
-* **Test su file reali (Cartella con almeno 2-3 file):**
-  * Eseguire lo script in modalità `--dry-run` su una cartella di test contenente almeno 3 file video.
-  * Verificare dai log che il messaggio di caricamento del modello (`Loading Whisper model...`) compaia **una sola volta** all'inizio e non per ciascun file.
-  * Verificare con `nvidia-smi` (su GPU) o monitoraggio RAM (su CPU) che la memoria rimanga stabile e venga liberata completamente al termine dello script.
+#### 4. Verification Tests & Acceptance Criteria
+* Real files multi-file dry-run test: verify via logs that `Loading Whisper model...` appears exactly once and subsequent files reuse the instance instantly.
+* Verify clean exit and unloading message.
 
 ---
 
-### TASK-02: Riformulazione Media Ponderata e Gestione Audio Muti / Non Vocali
+### TASK-02: 4-Valid-Sample Sampling Logic + Quorum & Silent/Non-Vocal Handling
 
-* **Riferimento analisi:** Punti 1.2 e 2.2
-* **Stato:** Pianificato
+* **Analysis Reference:** Items 1.2 and 2.2
+* **Status:** Planned
 
-#### 1. Descrizione del Problema
-L'attuale calcolo della media ponderata presenta un vizio logico:
-`weighted_average = total_confidence_lingua / total_detections`
-Se si effettuano 4 campionamenti:
-* Campione 1 (10% del film): Sigla musicale iniziale, Whisper non sente parlato e assegna casualmente una lingua secondaria con confidenza 0.10.
-* Campione 2 (35% del film): Parlato italiano chiaro, confidenza 0.98.
-* Campione 3 (60% del film): Parlato italiano chiaro, confidenza 0.97.
-* Campione 4 (85% del film): Parlato italiano chiaro, confidenza 0.95.
-Il totale per l'italiano è `2.90`. Dividendo per `4` campionamenti, la media risulta `72.5%`. Se la musica fosse durata anche per il secondo campione, la media scenderebbe a `48.7%`, fallendo la soglia del 65% nonostante l'italiano sia chiarissimo in tutto il parlato!
+#### 1. Problem Description
+The previous weighted average calculation had a fundamental mathematical flaw:
+`weighted_average = total_confidence_language / total_detections`
+If 4 samples were taken:
+* Sample 1 (10% of movie): Intro music, Whisper detects no speech and guesses a secondary language with confidence 0.10.
+* Sample 2 (35% of movie): Clear Italian dialogue, confidence 0.98.
+* Sample 3 (60% of movie): Clear Italian dialogue, confidence 0.97.
+* Sample 4 (85% of movie): Clear Italian dialogue, confidence 0.95.
+Italian total confidence is `2.90`. Divided by 4 total samples, the average becomes `72.5%`. If the opening song spanned two samples, the average dropped to `48.7%`, failing the 65% threshold despite dialogue being crystal clear Italian throughout!
 
-Inoltre, nei **film muti** o nelle tracce audio puramente di effetti/colonna sonora (senza dialoghi), Whisper tenta comunque di indovinare una lingua sul rumore di fondo. Lo script fa 10 tentativi esaustivi e casuali da 30 a 90 secondi, sprecando minuti di calcolo inutilmente senza mai raggiungere la soglia.
+Furthermore, on **silent movies** or music-only/effects-only audio tracks, Whisper guesses a random language on background noise, triggering 10 exhaustive retry attempts (30 to 90 seconds each) and wasting minutes with zero speech present.
 
-#### 2. Come Risolvere il Problema
-* **Garanzia di 4 Campionature Vocali Valide:**
-  * L'analisi di una traccia deve raccogliere sempre e comunque **4 campioni vocali validi** (cioè segmenti in cui Whisper rileva effettivamente presenza di parlato umano).
-  * Le posizioni fisse iniziali (10%, 35%, 60%, 85%) sono ideate per scavalcare sigle e titoli di coda; tuttavia, se un campione cade su una scena senza dialoghi (es. `no_speech_prob > 0.65` o silenzio), tale campione viene scartato e lo script seleziona immediatamente un **nuovo punto percentuale** da campionare finché non raggiunge la quota di 4 campioni validi.
-* **Protezione e Riconoscimento Tracce Senza Voce / Film Muti:**
-  * Per evitare loop infiniti nei film muti o nelle tracce audio puramente musicali/effetti sonori, si imposta un limite massimo di campioni testabili (es. 8–10 tentativi di campionamento a posizioni diverse).
-  * Se anche dopo aver esplorato 8-10 punti della traccia tutti i segmenti risultano privi di parlato (`no_speech_prob` costantemente alto), la traccia viene classificata con certezza come *"Traccia Priva di Parlato / Non Vocale"*.
-  * Viene emesso un log esplicito, si evita la cascata dei 9 tentativi successivi a vuoto e la traccia non viene alterata (o associata al codice ISO 639-2 `zxx` / `und`).
-* **Principio del Quorum sui 4 Campioni Validi:**
-  * Una volta ottenuti i 4 campioni vocali validi, si applica la logica del quorum:
-    * La lingua dominante deve essere confermata nella maggioranza dei campioni validi (almeno 3 su 4, pari al 75%, o minimo 50%+1).
-    * La media delle confidenze della lingua vincente calcolata esclusivamente sui campioni in cui è comparsa deve essere `>= --confidence` (default 65%).
-    * In questo modo, l'eventuale presenza di una singola parola spuria in altra lingua o rumore residuo non inficia il risultato corretto.
+#### 2. Resolution Strategy
+* **Guarantee of 4 Valid Vocal Samples:**
+  * Track analysis must always collect **4 valid vocal samples** (i.e. segments where Whisper detects actual human speech).
+  * Initial sampling positions (10%, 35%, 60%, 85%) bypass opening and end credits. However, if a sample falls on a dialogue-free scene (`no_speech_prob > 0.65` or silence), that sample is discarded, and the tool dynamically picks a **new percentage point** to sample until 4 valid vocal samples are acquired.
+* **Silent Movies / Non-Vocal Audio Protection:**
+  * To prevent infinite loops on silent movies or music/effects-only tracks, set a maximum exploration ceiling (e.g. max 8–10 distinct percentage points sampled).
+  * If all explored points consistently show no speech (`no_speech_prob` high), the track is classified as *"Non-Vocal / Dialogue-Free Audio"*.
+  * An explicit log is emitted, the 9 retry attempts are skipped immediately, and the track is preserved (or assigned ISO 639-2 `zxx` / `und`).
+* **Quorum Rule Across the 4 Valid Samples:**
+  * Once 4 valid vocal samples are gathered:
+    * The dominant language must be confirmed across the majority of valid samples (at least 3 out of 4, or 50%+1).
+    * The average confidence of the winning language across the samples where it was detected must be `>= --confidence` (default 65%).
+    * Any rogue word in another language or transient noise will not unfairly penalize the true language.
 
-#### 3. Step Operativi per la Risoluzione
-1. In `detect_language()`, estrarre e restituire sia `detected_language`, sia `confidence`, sia `info.no_speech_prob`.
-2. Nella logica di campionamento:
-   * Mantenere una lista di campioni vocali validi `valid_samples = []`.
-   * Partire dai punti base (10%, 35%, 60%, 85%).
-   * Se un punto presenta `no_speech_prob > 0.65`, loggarlo (`Campione al X% privo di parlato, selezione nuova posizione...`) e generare una nuova coordinata temporale non ancora esplorata.
-   * Porre un tetto massimo di esplorazione (max 8 campionamenti totali per traccia). Se si esaurisce il tetto senza raggiungere 4 campioni validi:
-     * Se ci sono 0 campioni vocali: traccia dichiarata muta/non vocale.
-     * Se ci sono 1-3 campioni vocali: valutare quorum proporzionale oppure procedere con cautela al retry dinamico.
-3. Se si ottengono i 4 campioni vocali validi:
-   * Calcolare le occorrenze di ciascuna lingua e la relativa media di confidenza.
-   * Applicare la verifica del quorum (lingua vincente presente in ≥3 campioni su 4 con media ≥ soglia).
-   * Se il quorum è raggiunto, validazione immediata al primo tentativo! Altrimenti, avviare il retry guidato.
+#### 3. Step-by-Step Implementation
+1. In `detect_language()`, return `detected_language`, `confidence`, and `info.no_speech_prob`.
+2. In sampling logic:
+   * Maintain `valid_samples = []`.
+   * Start with base points (10%, 35%, 60%, 85%).
+   * If a point has `no_speech_prob > 0.65`, log and generate a new unexplored timestamp.
+   * Enforce search cap (e.g. max 8 points). If cap reached without 4 vocal samples: classify as non-vocal track.
+3. Once 4 valid vocal samples are collected, calculate occurrences and confidence averages, then apply quorum validation.
 
-#### 4. Test di Analisi e Criteri di Verifica
-* **Test su file reale con colonna sonora/intro lunga o pause mute:**
-  * Verificare dai log che se un campione cade nel silenzio, viene scartato e sostituito da un punto alternativo fino ad avere esattamente 4 campioni vocali validi.
-* **Test su file muto o traccia solo musica/effetti:**
-  * Verificare che dopo il numero massimo di tentativi di ricerca (es. 8) lo script dichiari la traccia non vocale e non avvii i 10 tentativi di retry a vuoto.
-  * Eseguire esclusivamente con `--dry-run`.
+#### 4. Verification Tests & Acceptance Criteria
+* Test on file with music intro: verify silent/music sample is replaced by a valid vocal segment.
+* Test on silent/music-only track: verify tool stops after exploration cap without running 10 full retry attempts.
 
 ---
 
-### TASK-03: Gestione Segnali di Interruzione Pulita (Graceful Shutdown)
+### TASK-03: Graceful Shutdown & Interruption Signals Handling (`SIGINT`/`SIGTERM`)
 
-* **Riferimento analisi:** Punto 1.4
-* **Stato:** Pianificato
+* **Analysis Reference:** Item 1.4
+* **Status:** ✅ Completed
 
-#### 1. Descrizione del Problema
-Nel codice esiste il flag `self.interrupted`, ma non c'è alcun gestore per `SIGINT` (Ctrl+C da terminale) o `SIGTERM` (richiesta di arresto da parte di Docker/Kubernetes).
-Se l'utente ferma il container o preme Ctrl+C:
-* Lo script viene abbattuto immediatamente.
-* Se era in corso un'operazione di `mkvpropedit`, il file MKV potrebbe rimanere in uno stato incerto o corrotto.
-* Le risorse di memoria (VRAM/RAM) e i file temporanei non vengono ripuliti.
+#### 1. Problem Description
+The codebase previously contained a `self.interrupted = False` attribute, but lacked any active signal handlers for `signal.SIGINT` (terminal Ctrl+C) or `signal.SIGTERM` (Docker container stop / Kubernetes termination).
+When interrupted:
+* The script terminates abruptly mid-operation.
+* If a metadata write operation (`mkvpropedit`) is in progress, files risk corruption or incomplete headers.
+* Model resources and temporary memory remain uncleared.
+* The loop does not cleanly break across files.
 
-#### 2. Come Risolvere il Problema
-* Configurare un gestore di segnali centralizzato per `signal.SIGINT` e `signal.SIGTERM`.
-* Alla ricezione del segnale:
-  * Impostare un flag globale di interruzione.
-  * Se un comando atomico su un file è in esecuzione, consentirgli di completare la singola scrittura prima di arrestarsi.
-  * Interrompere il ciclo sui file successivi.
-  * Invocare la routine di cleanup delle risorse (scaricamento modello).
-  * Uscire con codice di terminazione standard (es. 130 per SIGINT).
+#### 2. Resolution Strategy
+* Register a centralized signal handler for `signal.SIGINT` and `signal.SIGTERM`.
+* On receiving an interruption signal:
+  * Set a global `_SHUTDOWN_REQUESTED = True` flag.
+  * Allow any ongoing atomic command to finish cleanly.
+  * Stop initiating further file or track processing.
+  * Trigger resource cleanup (`unload_whisper_model`).
+  * Exit with standard termination status codes (130 for SIGINT, 143 for SIGTERM).
+  * If a second signal is received immediately, force exit to ensure responsiveness.
 
-#### 3. Step Operativi per la Risoluzione
-1. Importare `signal`.
-2. Definire un gestore `_signal_handler(signum, frame)` nel `main`.
-3. Collegare `signal.signal(signal.SIGINT, handler)` e `signal.signal(signal.SIGTERM, handler)`.
-4. Nel ciclo dei file, verificare il flag all'inizio di ogni iterazione e tra l'analisi e la scrittura.
-5. In caso di interruzione, loggare `Arresto richiesto dall'utente/sistema, chiusura pulita in corso...`, eseguire il cleanup ed uscire.
+#### 3. Step-by-Step Implementation
+1. Import `signal`.
+2. Define a global shutdown state and signal handler function `_signal_handler(signum, frame)`.
+3. Register handlers with `signal.signal(signal.SIGINT, _signal_handler)` and `signal.signal(signal.SIGTERM, _signal_handler)`.
+4. In `AudioMediaChecker.process_file()`, check shutdown status before each track and sampling attempt.
+5. In `main()`, check shutdown status at the start of each file iteration; break loop if shutdown requested.
+6. Ensure cleanup runs in `finally:` block before exiting with code `128 + signum`.
 
-#### 4. Test di Analisi e Criteri di Verifica
-* Lanciare l'elaborazione di una cartella con più file in `--dry-run` e premere Ctrl+C durante l'analisi di un file: verificare che lo script intercetti il segnale, non avvii i file successivi, scarichi il modello ed esca in modo controllato.
+#### 4. Verification Tests & Acceptance Criteria
+* Start a multi-file run in `--dry-run` and trigger Ctrl+C during processing.
+* Verify log: shutdown message is logged, current step concludes gracefully, subsequent files are not started, Whisper is unloaded, and exit code is 130.
 
 ---
 
-### TASK-04: Ottimizzazione Rilevamento Lingua vs Trascrizione Completa
+### TASK-04: Fast Language Detection vs Full Autoregressive Transcription
 
-* **Riferimento analisi:** Punto 2.1
-* **Stato:** Pianificato
+* **Analysis Reference:** Item 2.1
+* **Status:** Planned
 
-#### 1. Descrizione del Problema
-Attualmente la funzione `detect_language` chiama:
+#### 1. Problem Description
+Currently, `detect_language` calls:
 `segments, info = model.transcribe(audio_file, language=None, beam_size=5)`
-`transcribe` esegue sia la classificazione dell'encoder per la lingua, sia la decodifica autoregressiva dell'intero testo parola per parola con fascio di ricerca (`beam_size=5`).
-Poiché il testo trascritto non viene utilizzato per il tagging, generare parole e token per 30-90 secondi di audio per ogni campionamento causa un sovraccarico computazionale inutile, allungando i tempi di esecuzione di oltre il 300%.
+`transcribe` performs full autoregressive text decoding token-by-token with beam search (`beam_size=5`). Because the transcribed sentences are not used for tagging, generating text tokens for 30–90 seconds of audio introduces huge unnecessary computational overhead, slowing down analysis by over 300%.
 
-#### 2. Come Risolvere il Problema
-* `faster-whisper` include internamente la procedura ottimizzata di identificazione della lingua eseguita solo attraverso l'encoder audio, senza dover decodificare il testo.
-* In alternativa, se si utilizza `transcribe`, disattivare il beam search (`beam_size=1`), limitare il decoding o richiamare `model.model.detect_language` sul tensore audio.
-* In modalità `--verbose`, se l'utente desidera vedere il testo di esempio, si può mantenere la decodifica; altrimenti in modalità normale e `--json` deve essere eseguita esclusivamente la classificazione linguistica rapida.
+#### 2. Resolution Strategy
+* Use direct language identification on the audio encoder representation without generating full text tokens.
+* When `--verbose` is requested, maintain full transcription decoding so the user can inspect sample text; otherwise, in standard and `--json` modes, execute fast direct language detection.
 
-#### 3. Step Operativi per la Risoluzione
-1. Isolare la chiamata di language detection pura usando le feature native di `faster-whisper`.
-2. Condizionare la decodifica completa del testo solo se il flag `--verbose` è attivo.
-3. Misurare il tempo medio per singolo campione (30s) prima e dopo la modifica.
+#### 3. Step-by-Step Implementation
+1. Separate language identification from text decoding.
+2. Only run text transcription if `--verbose` is enabled.
+3. Benchmark sample processing time before and after the change.
 
-#### 4. Test di Analisi e Criteri di Verifica
-* Eseguire l'analisi dello stesso file reale in `--dry-run` misurando i tempi di esecuzione.
-* Verificare che la lingua rilevata e il punteggio di probabilità siano identici, con un tempo di calcolo marcatamente inferiore.
+#### 4. Verification Tests & Acceptance Criteria
+* Dry-run benchmark on real test files: verify detection results match while total runtime is significantly reduced.
 
 ---
 
-### TASK-05: Supporto Variabili d'Ambiente (Docker-Friendly)
+### TASK-05: Environment Variables Support (Docker-Friendly Configuration)
 
-* **Riferimento analisi:** Punto 3.3
-* **Stato:** Pianificato
+* **Analysis Reference:** Item 3.3
+* **Status:** Planned
 
-#### 1. Descrizione del Problema
-Nei container Docker e negli stack Docker Compose, passare argomenti CLI lunghi è meno flessibile rispetto all'utilizzo di variabili d'ambiente (`environment:` nel compose o file `.env`).
+#### 1. Problem Description
+In Docker and Docker Compose stacks, specifying long CLI flags is less convenient than providing environment variables (`environment:` in Compose or `.env` files).
 
-#### 2. Come Risolvere il Problema
-* Permettere ad `argparse` di prendere i valori predefiniti dalle variabili d'ambiente di sistema (es. `AMC_MODEL`, `AMC_CONFIDENCE`, `AMC_FORCE_LANGUAGE`, `AMC_CHECK_ALL_TRACKS`, `AMC_DRY_RUN`, `AMC_GPU`).
-* Se un parametro viene passato sia via variabile che via riga di comando, l'argomento da riga di comando ha sempre la priorità.
+#### 2. Resolution Strategy
+* Allow `argparse` to read defaults from standardized environment variables (`AMC_MODEL`, `AMC_CONFIDENCE`, `AMC_FORCE_LANGUAGE`, `AMC_CHECK_ALL_TRACKS`, `AMC_DRY_RUN`, `AMC_GPU`).
+* Command-line arguments always override environment variable values.
 
-#### 3. Step Operativi per la Risoluzione
-1. Definire una mappatura delle variabili d'ambiente supportate con prefisso standard (es. `AMC_` per evitare collisioni).
-2. Utilizzare `os.getenv` per impostare i `default` negli argomenti di `argparse`.
-3. Documentare le variabili d'ambiente nel `README.md`.
+#### 3. Step-by-Step Implementation
+1. Map environment variables with `AMC_` prefix.
+2. Supply `os.getenv` values to `argparse` defaults.
+3. Update `README.md` documentation.
 
-#### 4. Test di Analisi e Criteri di Verifica
-* Lanciare il comando impostando `AMC_CONFIDENCE=80` nell'ambiente senza passare `--confidence` via CLI e verificare che lo script usi la soglia 80.
-
----
-
-### TASK-06: Pipeline Parallela Estrazione FFmpeg / Inferenza Whisper
-
-* **Riferimento analisi:** Punto 2.3
-* **Stato:** Pianificato
-
-#### 1. Descrizione del Problema
-L'attuale pipeline opera in modalità puramente sincrona e sequenziale:
-1. FFmpeg si avvia, estrae il campione audio e scrive i dati in memoria (Whisper e la GPU/CPU restano in attesa inattivi).
-2. Whisper riceve il campione ed esegue l'inferenza di rete neurale (FFmpeg e il disco restano completamente inattivi).
-3. Completato il campione, si ripete il ciclo.
-Nei film con tracce complesse o multiple, questo schema a blocchi raddoppia i tempi morti complessivi di calcolo e I/O.
-
-#### 2. Come Risolvere il Problema
-* Separare l'estrazione audio I/O (FFmpeg) dall'inferenza AI (Whisper) tramite un worker in background (asincrono o `ThreadPoolExecutor` / `Queue`):
-  * Mentre Whisper elabora il campione corrente (es. Campione 1), un thread leggero in background avvia già FFmpeg per estrarre e preparare in memoria il campione successivo (Campione 2).
-  * Quando Whisper ha terminato il campione 1, il campione 2 è già pronto in memoria (BytesIO), eliminando i tempi di attesa di I/O.
-* Se un campione viene scartato per assenza di parlato, il prefetcher si adatta estraendo la posizione successiva.
-
-#### 3. Step Operativi per la Risoluzione
-1. Progettare un generatore/coda (`queue.Queue`) di pre-estrazione audio in streaming o threading.
-2. Limitare il prefetch a un massimo di 1-2 campioni avanti per evitare consumo eccessivo di RAM.
-3. Sincronizzare la coda con la logica di campionamento del TASK-02.
-
-#### 4. Test di Analisi e Criteri di Verifica
-* Misurare il tempo totale di analisi su un file reale di test con 2-3 tracce audio prima e dopo l'introduzione della pipeline asincrona.
-* Verificare che l'uso della memoria resti costante e contenuto.
+#### 4. Verification Tests & Acceptance Criteria
+* Launch container with `AMC_CONFIDENCE=80` and verify the script uses 80 without CLI flag.
 
 ---
 
-## ⏸️ BACKLOG E ELEMENTI IN SOSPESO (MONITORAGGIO)
+### TASK-06: Parallel Pipeline: FFmpeg Extraction & Whisper Inference
+
+* **Analysis Reference:** Item 2.3
+* **Status:** Planned
+
+#### 1. Problem Description
+The current execution flow is completely synchronous and sequential:
+1. FFmpeg runs, extracts audio, and writes to memory (Whisper and GPU/CPU remain idle).
+2. Whisper receives the audio and runs neural network inference (FFmpeg and disk remain idle).
+3. Once finished, the cycle repeats.
+Across multiple tracks and files, this blocking pattern compounds idle latency.
+
+#### 2. Resolution Strategy
+* Decouple audio extraction (I/O) from neural inference (GPU/CPU) via a background prefetch worker (`queue.Queue` / `ThreadPoolExecutor`).
+* While Whisper analyzes Sample N, a lightweight background worker extracts Sample N+1 from disk.
+
+#### 3. Step-by-Step Implementation
+1. Implement a prefetch queue for audio sample extraction.
+2. Cap queue size to 1–2 samples to prevent unnecessary RAM consumption.
+3. Coordinate with TASK-02 dynamic sampling.
+
+#### 4. Verification Tests & Acceptance Criteria
+* Measure total analysis time on a multi-track test file before and after prefetching.
 
 ---
 
-### BACKLOG-01: Supporto `--json` su Cartelle Multiple
-* **Riferimento analisi:** Punto 1.3
-* **Stato:** In Sospeso (Backlog)
-* **Motivazione:** Attualmente la modalità `--json` deve essere utilizzata esclusivamente su file singolo. Se richiamata con `--folder`, viene generato un flusso di array JSON multipli e disgiunti, privi del campo percorso file.
-* **Azione futura:** Quando si affronterà questo punto, si implementerà un accumulatore globale nel `main` che raccoglie tutti i risultati e stampa un unico oggetto JSON strutturato:
+## ⏸️ BACKLOG & ON-HOLD ITEMS
+
+---
+
+### BACKLOG-01: `--json` Support for Multiple Folders/Files
+* **Analysis Reference:** Item 1.3
+* **Status:** On Hold (Backlog)
+* **Rationale:** Currently `--json` is strictly restricted to single file runs. Running on folders produces concatenated disjoint JSON arrays without file paths.
+* **Future Plan:** Implement a global accumulator in `main()` outputting a single structured JSON payload:
   ```json
   [
     {
@@ -263,19 +248,18 @@ Nei film con tracce complesse o multiple, questo schema a blocchi raddoppia i te
     }
   ]
   ```
-  Fino ad allora, lo script emetterà un messaggio di errore chiaro se si tenta di usare `--json` con `--folder`.
 
 ---
 
-### BACKLOG-02: Studio Disallineamento Indici `ffprobe` vs `mkvpropedit`
-* **Riferimento analisi:** Punto 1.5
-* **Stato:** In Sospeso (Backlog)
-* **Motivazione:** È un caso limite complesso. Se un file MKV contiene allegati (es. font, cover art) o flussi speciali, l'indice `stream['index'] + 1` di ffprobe potrebbe non corrispondere esattamente al target track id di `mkvpropedit`.
-* **Azione futura:** Valutare l'estrazione preventiva del Track UID o Track Number nativo di Matroska direttamente tramite `mkvmerge -J` o `ffprobe` con query specifica sui tag matroska, oppure tramite selettore di tipo `track:aN`.
+### BACKLOG-02: Investigation of `ffprobe` vs `mkvpropedit` Track Index Alignment
+* **Analysis Reference:** Item 1.5
+* **Status:** On Hold (Backlog)
+* **Rationale:** In MKV files containing attachments (fonts, cover art), `ffprobe` stream index `+ 1` may not strictly correspond to `mkvpropedit` target track number.
+* **Future Plan:** Explore Matroska Track UID matching or `track:aN` type-specific selectors.
 
 ---
 
-### BACKLOG-04: Sistema di Notifiche Webhook Post-Elaborazione
-* **Riferimento analisi:** Punto 3.5
-* **Stato:** In Sospeso (Backlog)
-* **Motivazione:** Possibilità di inviare payload a webhook Discord/Telegram o endpoint HTTP al termine della scansione. Registrato come idea per versioni future.
+### BACKLOG-04: Post-Processing Webhook Notifications System
+* **Analysis Reference:** Item 3.5
+* **Status:** On Hold (Backlog)
+* **Rationale:** Future option to dispatch scan summaries to Discord/Telegram webhooks or HTTP endpoints upon completion.
