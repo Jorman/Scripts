@@ -1,13 +1,11 @@
 import argparse
 import os
-import signal
 import sys
 import subprocess
 import json
 import random
 import logging
 from faster_whisper import WhisperModel
-from pydub import AudioSegment
 import pycountry
 import io
 from pathlib import Path
@@ -517,15 +515,21 @@ class AudioMediaChecker:
         """
         cmd = [
             'ffprobe',
-            '-v', 'quiet',
+            '-v', 'error',  # CAMBIATO DA 'quiet' A 'error' per vedere se ci sono problemi
             '-print_format', 'json',
             '-show_format',
             '-show_streams',
             str(self.file_path)
         ]
+        
+        # Esegui il comando
         result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # Se fallisce, includi stderr nell'errore per capire PERCHÉ
         if result.returncode != 0 or not result.stdout:
-            raise RuntimeError("Error executing ffprobe")
+            error_msg = result.stderr if result.stderr else "Nessun output di errore fornito da ffprobe."
+            raise RuntimeError(f"Error executing ffprobe su {self.file_path.name}: {error_msg}")
+            
         return json.loads(result.stdout)
 
     def update_language_tag(self, stream_index, language):
@@ -738,7 +742,7 @@ def main():
                 files_to_process.extend(find_files(folder_path, depth, dry_run=args.dry_run))
 
         if not files_to_process:
-            print("No MKV files found.")
+            print("No media files found.")
             sys.exit(1)
 
         if args.verbose:

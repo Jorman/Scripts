@@ -16,8 +16,10 @@ It's designed as a disposable container (`docker run --rm`) that can be integrat
 - **AI-Powered Detection** — Uses OpenAI Whisper for accurate language identification
 - **Automatic Tagging** — Updates language metadata in MKV files
 - **Flexible Analysis** — Single file or recursive folder processing
+- **Adaptive Multi-Attempt Detection** — Up to 10 retry attempts with dynamic segment durations (30–90s) and randomized sampling for low-confidence tracks
+- **JSON Output Mode** — Clean JSON output (`--json`) with track indexes and ISO 639-2 codes, ideal for pipeline and script automation
 - **Confidence Control** — Adjustable threshold (default: 65%)
-- **Force Override** — Manual language assignment when detection fails
+- **Force Override** — Manual language assignment or force-accepting best match under threshold
 - **GPU Acceleration** — Optional CUDA support for faster processing
 - **Docker-Native** — No local dependencies, run-and-forget design
 - **Dry-Run Mode** — Safe testing without file modifications
@@ -77,9 +79,10 @@ docker run --rm \
 | `--folder` | string | - | Directory path to process |
 | `--recursive` | int | - | Depth levels (0 = unlimited, >0 = specific depth) |
 | `--check-all-tracks` | flag | false | Analyze all tracks, not just untagged ones |
-| `--verbose` | flag | false | Enable detailed logging |
+| `--verbose` | flag | false | Enable detailed logging (incompatible with `--json`) |
+| `--json` | flag | false | Output results strictly in JSON format (track index and ISO 639-2 language); silences standard logs and progress bar (incompatible with `--verbose`) |
 | `--dry-run` | flag | false | Simulate operations without modifying files |
-| `--force-language` | string | - | Force specific language (ISO 639-2, 3 letters) |
+| `--force-language` | string / flag | - | Language code to force (ISO 639-2, 3 letters) when detection fails or is below threshold; if passed without value (`--force-language`), forces the detected language even if below threshold |
 | `--confidence` | int | 65 | Detection confidence threshold (0-100) |
 | `--model` | string | base | Whisper model size (see below) |
 | `--gpu` | flag | false | Use GPU acceleration (requires NVIDIA GPU) |
@@ -125,7 +128,7 @@ docker run --rm \
   --model small
 ```
 
-### Force Italian Language (fallback)
+### Force Specific Language (Fallback)
 ```bash
 docker run --rm \
   -v /media/movies:/data \
@@ -135,6 +138,45 @@ docker run --rm \
   --force-language ita \
   --recursive
 ```
+
+### Force Best Match Under Threshold (No Value)
+If confidence is below the threshold, but you want to force the most likely detected language anyway:
+```bash
+docker run --rm \
+  -v /media/movies:/data \
+  -v /opt/audiomedia-models:/models \
+  chryses/audiomedia-checker:latest \
+  --file "/data/DifficultAudio.mkv" \
+  --force-language
+```
+
+### JSON Output Mode (for Pipeline Automation)
+Generate minimal JSON output without log messages or progress bars, ideal for piping into scripts or tools like `jq`:
+```bash
+docker run --rm \
+  -v /media/movies:/data \
+  -v /opt/audiomedia-models:/models \
+  chryses/audiomedia-checker:latest \
+  --file "/data/Movie.mkv" \
+  --dry-run \
+  --check-all-tracks \
+  --json
+```
+
+Output:
+```json
+[
+  {
+    "track": 1,
+    "language": "ita"
+  },
+  {
+    "track": 2,
+    "language": "und"
+  }
+]
+```
+> **Note:** `--json` and `--verbose` are mutually exclusive. In JSON mode, standard logs and progress bars are disabled so stdout remains clean JSON. Any track where language cannot be reliably detected reports `"und"`.
 
 ### GPU-Accelerated Processing (medium model)
 ```bash
@@ -164,13 +206,23 @@ docker run --rm \
 
 ## How It Works
 
-### Detection Logic
-1. **Scans** MKV files (or all video formats in dry-run mode)  
-2. **Identifies** audio tracks without language tags  
-3. **Extracts** 30-second audio sample  
-4. **Analyzes** with Whisper AI model  
-5. **Updates** MKV metadata if confidence ≥ threshold  
-6. **Skips** modification for non-MKV formats (analysis only)
+### Detection Logic & Adaptive Multi-Attempt Analysis
+1. **Scans** MKV files (or all video formats in dry-run mode).
+2. **Identifies** audio tracks requiring analysis (tracks without language tags, or all tracks if `--check-all-tracks` is specified).
+3. **Attempt 1 (Multi-Point Fixed Sampling)**:
+   - Extracts 4 audio samples of 30 seconds at fixed intervals (10%, 35%, 60%, 85% of total duration).
+   - Computes weighted average confidence across all detected language candidates.
+   - If the language with the highest weighted average meets or exceeds `--confidence` (default: 65%), the track tag is updated and analysis for this track finishes.
+4. **Attempts 2–10 (Adaptive Randomized Sampling)**:
+   - If Attempt 1 confidence is below threshold, up to 9 subsequent attempts are triggered.
+   - Each subsequent attempt tests 4 new randomized positions (between 5% and 95%) with dynamic sample durations (30 to 90 seconds).
+   - Recalculates weighted averages; if threshold is reached, updates the tag and exits the retry loop.
+5. **Tagging & Fallback**:
+   - Updates MKV metadata with `mkvpropedit` (MKV only).
+   - If `--force-language` was supplied with a code (e.g. `ita`), it applies that code when detection fails or falls below threshold.
+   - If `--force-language` was passed without a value, the highest-confidence detected language is applied even if under threshold.
+   - In `--json` mode, outputs the final track mapping array (or `"und"` if detection failed completely).
+6. **Skips** modification for non-MKV formats (analysis only).
 
 > Note: models are downloaded to `/models`. Mount a persistent volume to avoid re-downloading on each run.
 
@@ -231,11 +283,11 @@ sudo systemctl restart docker
 - Recommendation: Backup important files before first run
 
 ### Force Language Behavior
-> ⚠️ Current Limitation: `--force-language` applies to ALL tracks that either:
-> - Have no language tag
-> - Have confidence score below threshold
+`--force-language` can operate in two distinct modes:
+- **Explicit Code** (e.g. `--force-language ita`): sets the specified 3-letter language code to all analyzed tracks that either lack a tag or fail to meet the confidence threshold.
+- **Flag Without Value** (i.e. `--force-language`): instructs the tool to accept and apply the most likely detected language candidate even if its confidence score falls below `--confidence`.
 
-Use only when you're certain all tracks share the same language.
+> ⚠️ When using an explicit code, note that it applies across all tracks failing the confidence check. Ensure this matches your intent before modifying files.
 
 ### Recursive Depth
 ```bash
@@ -349,12 +401,14 @@ sudo chown -R $USER:$USER /media/library
 ### High memory usage
 Large models require significant RAM:
 
-| Model | RAM Required |
-|-------|--------------|
-| tiny/base | ~2 GB |
-| small | ~4 GB |
-| medium | ~8 GB |
-| large | ~16 GB |
+| Model | Min RAM Required | Compute Type |
+|-------|------------------|--------------|
+| `tiny` | ~2 GB | `int8` |
+| `base` | ~3 GB | `int8` |
+| `small` | ~5 GB | `int8` |
+| `medium` | ~10 GB | `int8` (≥16GB RAM) / `float32` |
+| `large` | ~16 GB | `float32` |
+| `large-v3` | ~16 GB | `float32` |
 
 Use smaller models on limited hardware.
 
