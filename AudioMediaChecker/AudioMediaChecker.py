@@ -7,7 +7,7 @@ import concurrent.futures
 import json
 import random
 import logging
-from faster_whisper import WhisperModel
+from faster_whisper import WhisperModel, decode_audio
 import pycountry
 import io
 from pathlib import Path
@@ -632,6 +632,8 @@ class AudioMediaChecker:
     def detect_language(self, audio_file):
         """
         Performs language detection using the (cached) Whisper model.
+        When verbose mode is active, performs full autoregressive transcription to display
+        recognized text. Otherwise, runs direct encoder-based language detection without text decoding.
 
         Arguments:
           audio_file (file-like): audio sample in BytesIO format.
@@ -642,16 +644,23 @@ class AudioMediaChecker:
         self.logger.info("Beginning language detection")
 
         model = self._lazy_load_whisper()
-        segments, info = model.transcribe(audio_file, language=None, beam_size=5)
-        detected_language = info.language
+        audio_file.seek(0)
 
         if self.verbose:
+            segments, info = model.transcribe(audio_file, language=None, beam_size=5)
+            detected_language = info.language
+            confidence = info.language_probability
+
             self.logger.debug("Recognized text:")
             for segment in segments:
                 self.logger.debug(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
-            self.logger.info(f"Detected language: {detected_language} with confidence: {info.language_probability:.2f}")
+            self.logger.info(f"Detected language: {detected_language} with confidence: {confidence:.2f}")
 
-        return detected_language, info.language_probability
+            return detected_language, confidence
+        else:
+            audio_np = decode_audio(audio_file, sampling_rate=model.feature_extractor.sampling_rate)
+            detected_language, confidence, _ = model.detect_language(audio_np)
+            return detected_language, confidence
 
     def extract_samples_pipelined(self, audio_position, positions, duration_seconds):
         """

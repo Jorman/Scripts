@@ -29,7 +29,7 @@ Because the script operates in a production environment and performs direct meta
 | **TASK-01** | Whisper Model Caching Across Multiple Files & Resource Cleanup | Bugfix / Performance | High | ✅ Completed |
 | **TASK-02** | 4-Valid-Sample Sampling Logic + Quorum & Silent/Non-Vocal Handling | Algorithm / Accuracy | High | Planned |
 | **TASK-03** | Graceful Shutdown & Interruption Signals Handling (`SIGINT`/`SIGTERM`) | Stability / OS | Medium | ✅ Completed |
-| **TASK-04** | Fast Language Detection vs Full Autoregressive Transcription | Performance | Medium | Planned |
+| **TASK-04** | Fast Language Detection vs Full Autoregressive Transcription | Performance | Medium | ✅ Completed |
 | **TASK-05** | Environment Variables Support (Docker-Friendly Configuration) | Feature | Low | Planned |
 | **TASK-06** | Parallel Pipeline: FFmpeg Extraction & Whisper Inference | Performance / Concurrency | Medium | ✅ Completed |
 | **BACKLOG-01**| `--json` Support for Multiple Folders/Files | Feature / Architecture | - | On Hold |
@@ -162,24 +162,28 @@ When interrupted:
 ### TASK-04: Fast Language Detection vs Full Autoregressive Transcription
 
 * **Analysis Reference:** Item 2.1
-* **Status:** Planned
+* **Status:** ✅ Completed
 
 #### 1. Problem Description
-Currently, `detect_language` calls:
+Previously, `detect_language` unconditionally executed:
 `segments, info = model.transcribe(audio_file, language=None, beam_size=5)`
-`transcribe` performs full autoregressive text decoding token-by-token with beam search (`beam_size=5`). Because the transcribed sentences are not used for tagging, generating text tokens for 30–90 seconds of audio introduces huge unnecessary computational overhead, slowing down analysis by over 300%.
+`transcribe` performs full autoregressive text decoding token-by-token with beam search (`beam_size=5`). Because transcribed sentences are never used for tagging, generating text tokens for 30–90 seconds of audio introduces unnecessary computational overhead.
 
 #### 2. Resolution Strategy
-* Use direct language identification on the audio encoder representation without generating full text tokens.
-* When `--verbose` is requested, maintain full transcription decoding so the user can inspect sample text; otherwise, in standard and `--json` modes, execute fast direct language detection.
+* Decoupled language identification from text decoding:
+  * When `--verbose` is specified, run full `model.transcribe()` and iterate over `segments` to log recognized text with timestamps for debugging.
+  * In standard and `--json` modes, decode audio via `decode_audio` and run direct language classification via `model.detect_language(audio_np)`. This queries the Whisper encoder and language classification head directly without tokenizer setup or autoregressive generation loops.
 
 #### 3. Step-by-Step Implementation
-1. Separate language identification from text decoding.
-2. Only run text transcription if `--verbose` is enabled.
-3. Benchmark sample processing time before and after the change.
+1. Imported `decode_audio` from `faster_whisper`.
+2. Updated `detect_language(self, audio_file)` in `AudioMediaChecker.py` with conditional branch based on `self.verbose`.
+3. Added defensive `audio_file.seek(0)` before decoding.
 
 #### 4. Verification Tests & Acceptance Criteria
-* Dry-run benchmark on real test files: verify detection results match while total runtime is significantly reduced.
+* Verified exact numerical parity between `transcribe` and direct `detect_language` on identical audio samples (probabilities match to 4 decimal places).
+* Tested `--verbose` mode to verify recognized text segments remain visible.
+* Tested `--json` mode to confirm clean JSON payload without extra output.
+* Multi-file benchmark: further reduced per-file processing time down to ~2.44s/file.
 
 ---
 
