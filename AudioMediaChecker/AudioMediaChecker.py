@@ -346,8 +346,18 @@ class AudioMediaChecker:
                     if is_non_vocal:
                         self.logger.warning(
                             f"Track with ffprobe index {ffprobe_index}: No human speech detected across {len(used_positions)} "
-                            f"sampled positions. Track classified as dialogue-free / non-vocal audio."
+                            f"sampled positions. Track classified as dialogue-free / non-vocal audio (ISO 639-2: 'zxx')."
                         )
+                        self.handle_detection_result(ffprobe_index, 'zxx', 1.0)
+                        attempt_successful = True
+
+                        if self.json_output:
+                            json_results.append({
+                                "track": ffprobe_index,
+                                "language": "zxx"
+                            })
+
+                        self.logger.info("--" * 30)
                         break
 
                     if not valid_samples:
@@ -380,11 +390,7 @@ class AudioMediaChecker:
 
                         # Collect results in json mode
                         if self.json_output:
-                            try:
-                                detected_lang_3 = pycountry.languages.get(alpha_2=dominant_lang).alpha_3
-                            except (AttributeError, KeyError):
-                                self.logger.warning(f"Language code not found for {dominant_lang}. Using the original code.")
-                                detected_lang_3 = dominant_lang
+                            detected_lang_3 = self.to_alpha_3(dominant_lang)
 
                             json_results.append({
                                 "track": ffprobe_index,
@@ -427,7 +433,7 @@ class AudioMediaChecker:
         for stream in audio_streams:
             tags = stream.get('tags', {})
             current_lang = tags.get('LANGUAGE', None) or tags.get('language', None)
-            if self.check_all_tracks or not current_lang:
+            if self.check_all_tracks or not current_lang or current_lang.lower() in ('und', 'undefined'):
                 tracks.append({
                     'stream': stream,
                     'relative_index': relative_index,   # To use in ffmpeg: 0:a:{relative_index}
@@ -451,12 +457,40 @@ class AudioMediaChecker:
         for k, v in info.items():
             self.logger.info(f"• {k}: {v}")
 
+    @staticmethod
+    def to_alpha_3(lang_code):
+        """
+        Converts an ISO 639-1 (2-letter) or ISO 639-2 (3-letter) language code
+        to standard ISO 639-2 alpha-3 lowercase string using pycountry.
+        Handles special codes like 'zxx' and 'und' cleanly.
+        """
+        if not lang_code:
+            return None
+        code = str(lang_code).lower().strip()
+        if len(code) == 3:
+            try:
+                lang_obj = pycountry.languages.get(alpha_3=code)
+                if lang_obj and hasattr(lang_obj, 'alpha_3'):
+                    return lang_obj.alpha_3
+            except (KeyError, AttributeError):
+                pass
+            return code
+        elif len(code) == 2:
+            try:
+                lang_obj = pycountry.languages.get(alpha_2=code)
+                if lang_obj and hasattr(lang_obj, 'alpha_3'):
+                    return lang_obj.alpha_3
+            except (KeyError, AttributeError):
+                pass
+            return code
+        return code
+
     def handle_detection_result(self, stream_index, detected_lang, confidence):
         """
         Handles the result of language detection:
          - converts the code to ISO 639-2 (using pycountry)
          - checks the confidence obtained
-         - updates the trace tag if necessary
+         - updates the track tag if necessary
         
         Arguments:
           stream_index (int): stream index (ffprobe)
@@ -465,14 +499,11 @@ class AudioMediaChecker:
         """
         self.logger.debug(f"Start handle_detection_result for trace {stream_index}")
 
-        try:
-            detected_lang_3 = pycountry.languages.get(alpha_2=detected_lang).alpha_3
-        except AttributeError:
-            self.logger.warning(f"Language code not found for {detected_lang}. Using the original code.")
-            detected_lang_3 = detected_lang
+        detected_lang_3 = self.to_alpha_3(detected_lang)
 
         current_lang = self.media_info['streams'][stream_index].get('tags', {}).get('language')
-        self.logger.debug(f"Current language by track {stream_index}: {current_lang}")
+        current_lang_3 = self.to_alpha_3(current_lang) if current_lang else None
+        self.logger.debug(f"Current language by track {stream_index}: {current_lang} (alpha_3: {current_lang_3})")
 
         confidence_percent = confidence * 100
 
@@ -480,8 +511,11 @@ class AudioMediaChecker:
             self.logger.debug(f"Language detected for track {stream_index}: {detected_lang_3} (original: {detected_lang})")
 
             if confidence_percent >= self.confidence_threshold:
-                if detected_lang_3 != current_lang:
-                    self.logger.info(f"Recognized language for track {stream_index}: {detected_lang_3} with confidence {confidence_percent:.2f}%")
+                if detected_lang_3 != current_lang_3:
+                    if detected_lang_3 == 'zxx':
+                        self.logger.info(f"Recognized language for track {stream_index}: zxx (No linguistic content) with confidence {confidence_percent:.2f}%")
+                    else:
+                        self.logger.info(f"Recognized language for track {stream_index}: {detected_lang_3} with confidence {confidence_percent:.2f}%")
                     self.update_language_tag(stream_index, detected_lang_3)
                 else:
                     self.logger.info(f"Language by track {stream_index} remains unchanged: {detected_lang_3} with confidence {confidence_percent:.2f}%")

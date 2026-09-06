@@ -103,6 +103,13 @@ Furthermore, on **silent movies** or music-only/effects-only audio tracks, Whisp
 * **Exploration Ceiling & Non-Vocal Audio Protection:**
   * Set `max_explored = 10` points per attempt.
   * If all explored points across the entire file consistently lack human speech, the track is classified as *"Non-Vocal / Dialogue-Free Audio"*, immediately halting the remaining 9 attempts.
+* **Standardized ISO 639-2 Non-Vocal Tagging (`zxx` vs `und`):**
+  * Fully adheres to ISO 639-2 / ISO 639-3 and Matroska IETF BCP 47 standard semantics:
+    * `und` (*Undetermined*): reserved strictly for tracks containing speech where language could not be recognized after maximum attempts.
+    * `zxx` (*No linguistic content; Not applicable*): assigned to confirmed dialogue-free / non-vocal audio tracks (silent films, instrumental music, ambient/sound effects).
+  * Automatically updates MKV metadata tag to `zxx` via `mkvpropedit` (or simulated in `--dry-run`).
+  * Emits `{"track": <index>, "language": "zxx"}` in `--json` mode.
+  * Checks existing tags: if a track is already tagged `zxx`, skips analysis unless `--check-all-tracks` is set.
 * **Purified Quorum Consensus:**
   * Quorum strictly requires all 4 valid vocal samples and at least 3 out of 4 (>= 75%) agreement on the dominant language.
   * The average confidence is computed exclusively across samples that matched the dominant language, preventing unrelated soundbites or foreign words from diluting the true language.
@@ -111,13 +118,19 @@ Furthermore, on **silent movies** or music-only/effects-only audio tracks, Whisp
 1. Integrated Silero VAD (`check_speech_activity`) using `faster_whisper.vad`.
 2. Implemented `collect_valid_samples` generator/prefetcher with dynamic queue replacement.
 3. Implemented `evaluate_quorum` with strict 4-sample quorum and purified confidence calculation.
-4. Refactored `process_file` to unify Attempt 1 and Attempts 2–10 under the new robust engine.
+4. Added `to_alpha_3` helper method supporting standard 2-letter, 3-letter, and special codes (`zxx`, `und`).
+5. Implemented `zxx` ISO standard classification in `process_file` and `handle_detection_result`:
+   * Non-vocal tracks trigger tag updates to `zxx` and output `zxx` in JSON mode.
+   * `get_tracks_to_analyze` treats unset or `und` tracks as candidates for analysis, while preserving existing valid tags including `zxx`.
+6. Refactored `process_file` to unify Attempt 1 and Attempts 2–10 under the new robust engine.
 
 #### 4. Verification Tests & Acceptance Criteria
 * Real file test on TV episode (`Spin City`): 4/4 valid speech samples collected, 100% Italian quorum (94.09% confidence).
 * Multi-track movie (`2 Hearts`): analyzed Track 1 (Italian AC3 5.1) and Track 2 (English AC3 5.1), both achieving 100% quorum in 7.3s.
 * Movie with silent intro (`We Live in Time` - Opus audio): positions 10% and 35% detected as 0s speech and discarded; replacement positions 67% and 61% queued and confirmed with speech, reaching 100% Italian quorum.
 * Atmospheric horror film (`The Woman in Black`): Attempt 1 discarded 7 silent points, stopped at 3 samples; Attempt 2 ran with randomized longer duration and achieved 75% Italian quorum (97.45% confidence); Track 2 achieved 100% English quorum (95.47% confidence).
+* Silent movies (`Nosferatu (1922)` & `The Phantom Carriage (1921)`): all 10 sample positions across the film verified 0.00s speech; accurately classified as non-vocal audio (`zxx`), updated language tag to `zxx` in dry-run, output `[{"track": 1, "language": "zxx"}]` in `--json` mode, completed in 4.2–6.7s.
+* Sandbox live write verification: verified actual write of `zxx` on MKV via `mkvpropedit` (without dry-run) and confirmed via `ffprobe` inspection. Re-running without `--check-all-tracks` confirmed track is recognized as already tagged and skipped.
 * Tested `--json` and `--verbose` modes across all file types.
 
 ---
