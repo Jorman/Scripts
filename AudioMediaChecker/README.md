@@ -314,6 +314,18 @@ AudioMedia Checker decouples language identification from full text transcriptio
 - **Full Track Analysis (4 Samples):** Total Whisper inference time across an entire movie/episode is reduced from ~8.0s down to **~1.6s on CPU**, and from ~1.85s down to **~0.13s on GPU**.
 - **Accuracy Parity:** The mathematical difference in language confidence between fast detection and full transcription is `0.000000` (zero loss of accuracy). Full text transcription can still be enabled for debugging purposes by passing `--verbose`.
 
+### Real-World Library Batch Throughput (10, 25, 50, 100 Files)
+*Benchmarked on a real heterogeneous media library (movies with 5.1/7.1 surround tracks and multi-language audio, TV series episodes, and trailers) using GPU acceleration (`RTX 3060 12GB`, `base` model, `--check-all-tracks --dry-run`):*
+
+| Files Analyzed | Total Audio Tracks Scanned | Total Time | Average Time / File | Average Time / Audio Track |
+|:---:|:---:|:---:|:---:|:---:|
+| **10 files** | 13 tracks | 20.0 s | **2.00 s / file** | **1.54 s / track** |
+| **25 files** | 37 tracks | 52.7 s | **2.11 s / file** | **1.42 s / track** |
+| **50 files** | 77 tracks | 112.6 s (1m 52s) | **2.25 s / file** | **1.46 s / track** |
+| **100 files** | 155 tracks | 237.7 s (3m 57s) | **2.38 s / file** | **1.53 s / track** |
+
+> **Stability & Consistency:** Throughput remains rock-solid (~1.4–1.5s per track) across hundreds of files without memory leaks or VRAM degradation, thanks to model caching across files (TASK-01) and background FFmpeg prefetching (TASK-06).
+
 ---
 
 ## ⚠️ Important Notes

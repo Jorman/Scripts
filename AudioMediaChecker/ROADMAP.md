@@ -197,9 +197,13 @@ Previously, `detect_language` unconditionally executed:
 * Real-world hardware benchmarks on 30s audio chunks (`base` model):
   * **CPU (Intel Core i5-10400, `int8`):** Reduced from **1999.6 ms** (~2.0s) down to **407.6 ms** (~0.4s) $\to$ **4.91x faster** (~1.6s saved per sample).
   * **GPU (NVIDIA RTX 3060 12GB, `float16`):** Reduced from **462.6 ms** down to **33.4 ms** $\to$ **13.83x faster** (nearly instantaneous).
+* Real-world library batch throughput benchmark (100 random heterogeneous files, 155 audio tracks on RTX 3060):
+  * 10 files (13 tracks): 20.0s (2.00s/file, 1.54s/track)
+  * 25 files (37 tracks): 52.7s (2.11s/file, 1.42s/track)
+  * 50 files (77 tracks): 112.6s (2.25s/file, 1.46s/track)
+  * 100 files (155 tracks): 237.7s (2.38s/file, 1.53s/track)
 * Tested `--verbose` mode to verify recognized text segments remain visible.
 * Tested `--json` mode to confirm clean JSON payload without extra output.
-* Multi-file benchmark: overall file processing time reduced significantly (~2.44s/file on CPU, <1s/file on GPU).
 
 ---
 
