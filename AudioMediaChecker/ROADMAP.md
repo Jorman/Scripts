@@ -197,11 +197,17 @@ Previously, `detect_language` unconditionally executed:
 * Real-world hardware benchmarks on 30s audio chunks (`base` model):
   * **CPU (Intel Core i5-10400, `int8`):** Reduced from **1999.6 ms** (~2.0s) down to **407.6 ms** (~0.4s) $\to$ **4.91x faster** (~1.6s saved per sample).
   * **GPU (NVIDIA RTX 3060 12GB, `float16`):** Reduced from **462.6 ms** down to **33.4 ms** $\to$ **13.83x faster** (nearly instantaneous).
-* Real-world library batch throughput benchmark (100 random heterogeneous files, 155 audio tracks on RTX 3060):
-  * 10 files (13 tracks): 20.0s (2.00s/file, 1.54s/track)
-  * 25 files (37 tracks): 52.7s (2.11s/file, 1.42s/track)
-  * 50 files (77 tracks): 112.6s (2.25s/file, 1.46s/track)
-  * 100 files (155 tracks): 237.7s (2.38s/file, 1.53s/track)
+* Real-world library batch throughput benchmark on 100 identical random heterogeneous files (155 audio tracks):
+  * **GPU (NVIDIA RTX 3060 12GB):**
+    * 10 files (13 tracks): 20.0s (2.00s/file, 1.54s/track)
+    * 25 files (37 tracks): 52.7s (2.11s/file, 1.42s/track)
+    * 50 files (77 tracks): 112.6s (2.25s/file, 1.46s/track)
+    * 100 files (155 tracks): 237.7s (2.38s/file, 1.53s/track)
+  * **CPU (Intel Core i5-10400):**
+    * 10 files (13 tracks): 40.8s (4.08s/file, 3.14s/track)
+    * 25 files (37 tracks): 115.7s (4.63s/file, 3.13s/track)
+    * 50 files (77 tracks): 240.5s (4.81s/file, 3.12s/track)
+    * 100 files (155 tracks): 513.7s (5.14s/file, 3.31s/track)
 * Tested `--verbose` mode to verify recognized text segments remain visible.
 * Tested `--json` mode to confirm clean JSON payload without extra output.
 

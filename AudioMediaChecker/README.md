@@ -315,16 +315,19 @@ AudioMedia Checker decouples language identification from full text transcriptio
 - **Accuracy Parity:** The mathematical difference in language confidence between fast detection and full transcription is `0.000000` (zero loss of accuracy). Full text transcription can still be enabled for debugging purposes by passing `--verbose`.
 
 ### Real-World Library Batch Throughput (10, 25, 50, 100 Files)
-*Benchmarked on a real heterogeneous media library (movies with 5.1/7.1 surround tracks and multi-language audio, TV series episodes, and trailers) using GPU acceleration (`RTX 3060 12GB`, `base` model, `--check-all-tracks --dry-run`):*
+*Benchmarked on the exact same 100 random heterogeneous media files (155 audio tracks: surround 5.1/7.1, multi-language audio, TV episodes, and trailers) using the default `base` model (`--check-all-tracks --dry-run`):*
 
-| Files Analyzed | Total Audio Tracks Scanned | Total Time | Average Time / File | Average Time / Audio Track |
-|:---:|:---:|:---:|:---:|:---:|
-| **10 files** | 13 tracks | 20.0 s | **2.00 s / file** | **1.54 s / track** |
-| **25 files** | 37 tracks | 52.7 s | **2.11 s / file** | **1.42 s / track** |
-| **50 files** | 77 tracks | 112.6 s (1m 52s) | **2.25 s / file** | **1.46 s / track** |
-| **100 files** | 155 tracks | 237.7 s (3m 57s) | **2.38 s / file** | **1.53 s / track** |
+| Files Analyzed | Total Audio Tracks Scanned | GPU Total Time (RTX 3060) | CPU Total Time (i5-10400) | GPU Avg / Track | CPU Avg / Track | GPU Speedup |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **10 files** | 13 tracks | **20.0 s** | **40.8 s** | **1.54 s / track** | **3.14 s / track** | **2.0x faster** |
+| **25 files** | 37 tracks | **52.7 s** | **115.7 s** *(1m 55s)* | **1.42 s / track** | **3.13 s / track** | **2.2x faster** |
+| **50 files** | 77 tracks | **112.6 s** *(1m 52s)* | **240.5 s** *(4m 00s)* | **1.46 s / track** | **3.12 s / track** | **2.1x faster** |
+| **100 files** | 155 tracks | **237.7 s** *(3m 57s)* | **513.7 s** *(8m 33s)* | **1.53 s / track** | **3.31 s / track** | **2.2x faster** |
 
-> **Stability & Consistency:** Throughput remains rock-solid (~1.4–1.5s per track) across hundreds of files without memory leaks or VRAM degradation, thanks to model caching across files (TASK-01) and background FFmpeg prefetching (TASK-06).
+> **Stability & Linearity:** 
+> - **CPU Processing:** Runs at a stable **~3.1 – 3.3 seconds per audio track** (~5.1s per multi-track file).
+> - **GPU Processing:** Runs at a stable **~1.4 – 1.5 seconds per audio track** (~2.3s per multi-track file), completing 100 files in under 4 minutes.
+> - Thanks to Whisper model caching across files (TASK-01) and background FFmpeg audio prefetching (TASK-06), memory usage remains completely flat without leaks or VRAM degradation.
 
 ---
 
