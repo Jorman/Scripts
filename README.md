@@ -13,7 +13,7 @@ This script injects trackers into your **qBittorrent downloads**.
 
 
 ### AddTransmissionTrackers.sh
-This script injects trakers inside the **Transmission torrent**
+This script injects trackers inside the **Transmission torrent**
 
 
 ### TransmissionRemoveCompleteTorrent.sh
@@ -28,11 +28,11 @@ This script checks qBittorrents Hard Links.
 
 Please star this project - if you find a problem, please do report it.
 
-While the scripts do not change often, the project is regualrly reviewed.  The world of Torrenting is well established, but tweaks, tricks and usage evolves.
+While the scripts do not change often, the project is regularly reviewed.  The world of Torrenting is well established, but tweaks, tricks and usage evolves.
 
 As things evolve, these scripts will be updated.  If you would like to add, suggest ideas or propose new methods, please do open either an Issue or pop me a message.
 
 
 
 # TODO
-Make some good expalation on how to use these scripts - see the Wiki (top)
+Make some good explanation on how to use these scripts - see the Wiki (top)
