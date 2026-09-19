@@ -1,6 +1,6 @@
 # AddTransmissionTrackers.sh
 
-The purpose of this script is to inject trakers inside the **Transmission torrent**
+The purpose of this script is to inject trackers inside the **Transmission torrent**
 
 This can be used manually, or with Radarr/Sonarr automatically. To run the script manually, simply run the script `./AddTransmissionTrackers.sh` and see all the possible options.
 
@@ -36,4 +36,3 @@ If you are a **Radarr and/or Sonarr user**, personally I:
 
 
 One note about configuration and using the script manually. Before use you MUST configure the username, password, host and port within the script. Otherwise I would have to insert four new options to be called every time for manual user input, or "complicate" it by having a configuration file saved somewhere. If it's necessary I will do it, but for now I think it is easier to keep only the necessary options.
-
